@@ -252,8 +252,21 @@ body {
   background: var(--bt-primary);
 }
 
+.status-dot.stopped {
+  background: #dc3545;
+}
+
 .status-dot.error {
   background: #dc3545;
+}
+
+.status-text.running {
+  color: var(--bt-primary);
+}
+
+.status-text.stopped,
+.status-text.error {
+  color: #dc3545;
 }
 
 .terminal-toolbar {

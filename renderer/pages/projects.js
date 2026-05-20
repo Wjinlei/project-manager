@@ -90,6 +90,7 @@ function renderProjectRows() {
     const sourceText = runtime?.source === 'external' ? '外部' : runtime?.source === 'managed' ? '托管' : '';
     const operatingAction = isOperating ? projectsState.operatingAction : null;
     const operatingText = actionText(operatingAction, '处理中...');
+    const statusClass = status === 'running' ? 'running' : status === 'error' ? 'error' : 'stopped';
     return `
       <tr>
         <td>
@@ -97,7 +98,7 @@ function renderProjectRows() {
           <div class="text-muted small">${escapeHtml(project.remark || '无备注')}</div>
         </td>
         <td><span class="badge ${typeClass(project.type)}">${escapeHtml(project.type)}</span></td>
-        <td><span class="status-dot ${status === 'running' ? 'running' : status === 'error' ? 'error' : ''}"></span>${escapeHtml(status)}${sourceText ? `<span class="badge text-bg-light ms-1">${sourceText}</span>` : ''}</td>
+        <td><span class="status-dot ${statusClass}"></span><span class="status-text ${statusClass}">${escapeHtml(status)}</span>${sourceText ? `<span class="badge text-bg-light ms-1">${sourceText}</span>` : ''}</td>
         <td>${runtime?.pid || '-'}</td>
         <td class="project-path" title="${escapeHtml(project.path)}">${escapeHtml(project.path)}</td>
         <td>${escapeHtml(project.updated_at || project.created_at || '')}</td>
