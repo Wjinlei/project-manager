@@ -19,6 +19,18 @@ function renderWorkflowPage() {
         <div class="workflow-editor" id="workflowEditor"><div class="placeholder-panel"><h5>请选择流程</h5><p>选择左侧流程后编辑步骤并执行。</p></div></div>
       </div>
     </div>
+    <div class="modal fade" id="workflowModal" tabindex="-1">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header"><h5 class="modal-title">新建流程</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+          <div class="modal-body">
+            <label class="form-label">流程名称</label>
+            <input class="form-control form-control-sm" id="newWorkflowNameInput" placeholder="请输入流程名称">
+          </div>
+          <div class="modal-footer"><button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">取消</button><button type="button" class="btn btn-sm btn-bt" id="saveNewWorkflowBtn">保存</button></div>
+        </div>
+      </div>
+    </div>
   `;
 }
 
@@ -88,10 +100,12 @@ function renderEditor() {
 
 async function addWorkflow() {
   try {
-    const name = prompt('流程名称');
+    const name = document.getElementById('newWorkflowNameInput').value;
     if (!name?.trim()) return;
     const workflow = await window.projectManager.workflows.create({ name: name.trim(), type: 'multi', project_id: null, description: '' });
     workflowState.selectedWorkflowId = workflow.id;
+    bootstrap.Modal.getInstance(document.getElementById('workflowModal'))?.hide();
+    document.getElementById('newWorkflowNameInput').value = '';
     await loadWorkflows();
   } catch (error) {
     alert(error.message || '新建流程失败');
@@ -147,6 +161,9 @@ window.workflowsPage = {
 
 function handleWorkflowClick(event) {
   if (event.target.closest('#addWorkflowBtn')) {
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('workflowModal')).show();
+  }
+  if (event.target.closest('#saveNewWorkflowBtn')) {
     addWorkflow();
   }
 }
