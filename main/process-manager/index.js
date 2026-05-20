@@ -301,6 +301,9 @@ function processMatchesProject(proc, project, executable, spawnInfo) {
   if ((hasProjectPath || hasWorkDir) && hasSpawnCommand && argsMatched) {
     return true;
   }
+  if (!execPath && hasSpawnCommand && argsMatched) {
+    return true;
+  }
   return false;
 }
 
