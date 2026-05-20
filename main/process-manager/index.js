@@ -32,6 +32,43 @@ function getLogDirectory() {
   return path.join(os.homedir(), '.project-manager', 'project-log');
 }
 
+function getRuntimeStatusPath() {
+  return path.join(os.homedir(), '.project-manager', 'runtime-status.json');
+}
+
+function readRuntimeStatusFile() {
+  const statusPath = getRuntimeStatusPath();
+  if (!fs.existsSync(statusPath)) {
+    return {};
+  }
+  try {
+    return JSON.parse(fs.readFileSync(statusPath, 'utf8')) || {};
+  } catch (_err) {
+    return {};
+  }
+}
+
+function writeRuntimeStatusFile(statuses) {
+  fs.mkdirSync(path.dirname(getRuntimeStatusPath()), { recursive: true });
+  fs.writeFileSync(getRuntimeStatusPath(), JSON.stringify(statuses, null, 2));
+}
+
+function saveRuntimeStatus(projectId, status) {
+  const statuses = readRuntimeStatusFile();
+  statuses[Number(projectId)] = status;
+  writeRuntimeStatusFile(statuses);
+}
+
+function removeRuntimeStatus(projectId) {
+  const statuses = readRuntimeStatusFile();
+  delete statuses[Number(projectId)];
+  writeRuntimeStatusFile(statuses);
+}
+
+function getSavedRuntimeStatus(projectId) {
+  return readRuntimeStatusFile()[Number(projectId)] || null;
+}
+
 function sanitizeLogName(name, projectId) {
   const safeName = String(name || `项目${projectId}`)
     .replace(/[\\/:*?"<>|]/g, '_')
@@ -276,6 +313,18 @@ function normalizeText(value) {
   return String(value || '').replaceAll('\\', '/').toLowerCase();
 }
 
+function isProcessAlive(pid) {
+  if (!pid) {
+    return false;
+  }
+  try {
+    process.kill(Number(pid), 0);
+    return true;
+  } catch (_err) {
+    return false;
+  }
+}
+
 function processMatchesProject(proc, project, executable, spawnInfo) {
   const commandLine = normalizeText(proc.CommandLine);
   const executablePath = normalizeText(proc.ExecutablePath);
@@ -330,6 +379,21 @@ async function getRuntimeStatus(projectId) {
   const runtime = runningProcesses.get(id);
   if (runtime) {
     return { projectId: id, running: true, pid: runtime.process.pid, startedAt: runtime.startedAt, managed: true, source: 'managed' };
+  }
+  const savedRuntime = getSavedRuntimeStatus(id);
+  if (savedRuntime?.pid && isProcessAlive(savedRuntime.pid)) {
+    updateProjectStatus(id, 'running');
+    return {
+      projectId: id,
+      running: true,
+      pid: Number(savedRuntime.pid),
+      startedAt: savedRuntime.startedAt || null,
+      managed: true,
+      source: 'saved'
+    };
+  }
+  if (savedRuntime?.pid) {
+    removeRuntimeStatus(id);
   }
   const repositories = getRepositories();
   const project = repositories.projects.findById(id);
@@ -435,11 +499,13 @@ async function startProject(projectId) {
     windowsHide: false
   });
 
+  const startedAt = new Date().toISOString();
   runningProcesses.set(id, {
     process: child,
-    startedAt: new Date().toISOString(),
+    startedAt,
     output: []
   });
+  saveRuntimeStatus(id, { pid: child.pid, startedAt, source: 'managed' });
   updateProjectStatus(id, 'running');
 
   child.stdout?.on('data', (chunk) => {
@@ -458,6 +524,7 @@ async function startProject(projectId) {
 
   child.on('error', (err) => {
     runningProcesses.delete(id);
+    removeRuntimeStatus(id);
     updateProjectStatus(id, 'error');
     appendProjectLog(id, 'stderr', `启动失败: ${err.message} (文件: ${executable.exec_path})\n`);
     getMainWindow()?.webContents.send('terminal:output', {
@@ -470,6 +537,7 @@ async function startProject(projectId) {
 
   child.on('exit', (code) => {
     runningProcesses.delete(id);
+    removeRuntimeStatus(id);
     updateProjectStatus(id, code === 0 ? 'stopped' : 'error');
     appendProjectLog(id, 'system', `进程已退出，退出码: ${code}\n`);
   });
@@ -481,6 +549,21 @@ async function stopProject(projectId) {
   const id = Number(projectId);
   const runtime = runningProcesses.get(id);
   if (!runtime) {
+    const savedRuntime = getSavedRuntimeStatus(id);
+    if (savedRuntime?.pid && isProcessAlive(savedRuntime.pid)) {
+      if (process.platform === 'win32') {
+        await killProcessTree(savedRuntime.pid);
+      } else {
+        process.kill(Number(savedRuntime.pid), 'SIGTERM');
+      }
+      removeRuntimeStatus(id);
+      updateProjectStatus(id, 'stopped');
+      appendProjectLog(id, 'system', '已停止保存的托管进程\n');
+      return { projectId: id, running: false, pid: null, managed: false, source: 'none', stopped: true };
+    }
+    if (savedRuntime?.pid) {
+      removeRuntimeStatus(id);
+    }
     const status = await getRuntimeStatus(id);
     if (status.running && !status.managed) {
       return { ...status, message: '检测到外部启动的进程，未执行停止以避免误杀。' };
@@ -522,6 +605,7 @@ async function stopProject(projectId) {
   }
 
   runningProcesses.delete(id);
+  removeRuntimeStatus(id);
   updateProjectStatus(id, 'stopped');
   appendProjectLog(id, 'system', stopped ? '进程已停止\n' : '已执行停止流程，进程状态待系统刷新\n');
   return { projectId: id, running: false, pid: null, managed: false, source: 'none', stopped };
