@@ -167,12 +167,20 @@ function saveExecutable(projectId, payload) {
 }
 
 function getSpawnOptions(project, executable) {
-  const workDir = executable.work_dir || project.path || path.dirname(executable.exec_path);
+  const useCommand = !executable.exec_path && executable.args;
+  const workDir = executable.work_dir || project.path || (executable.exec_path ? path.dirname(executable.exec_path) : process.cwd());
   const projectType = (project.type || '').toLowerCase();
-  const ext = path.extname(executable.exec_path).toLowerCase();
+  const ext = path.extname(executable.exec_path || '').toLowerCase();
   const args = parseArgs(executable.args);
 
   let spawnCmd, spawnArgs, needsShell = false;
+
+  if (useCommand) {
+    spawnCmd = args[0];
+    spawnArgs = args.slice(1);
+    needsShell = process.platform === 'win32';
+    return { workDir, spawnCmd, spawnArgs, needsShell };
+  }
 
   switch (projectType) {
     case 'go':
@@ -297,7 +305,7 @@ function processMatchesProject(proc, project, executable, spawnInfo) {
 }
 
 async function detectExternalRuntime(project, executable) {
-  if (!project || !executable?.exec_path) {
+  if (!project || !executable || (!executable.exec_path && !executable.args)) {
     return null;
   }
   const spawnInfo = getSpawnOptions(project, executable);
@@ -409,8 +417,8 @@ async function startProject(projectId) {
   }
 
   const executable = getExecutable(id);
-  if (!executable || !executable.exec_path) {
-    throw new Error('请先配置执行文件');
+  if (!executable || (!executable.exec_path && !executable.args?.trim())) {
+    throw new Error('请先配置执行文件或执行命令');
   }
 
   const external = await detectExternalRuntime(project, executable);

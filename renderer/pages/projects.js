@@ -152,8 +152,9 @@ function renderProjectsPage() {
               <div class="row g-3"><div class="col-md-6"><label class="form-label">项目名称</label><input class="form-control form-control-sm" id="projectNameInput" required></div><div class="col-md-6"><label class="form-label">项目类型</label><select class="form-select form-select-sm" id="projectTypeInput">${PROJECT_TYPES.filter((type) => type !== '全部').map((type) => `<option value="${escapeHtml(type)}">${escapeHtml(type)}</option>`).join('')}</select></div></div>
               <div class="mt-3"><label class="form-label">备注</label><textarea class="form-control form-control-sm" id="projectRemarkInput" rows="3"></textarea></div>
               <hr>
-              <div class="mb-3"><label class="form-label">执行文件路径</label><div class="input-group input-group-sm"><input class="form-control" id="execPathInput"><button class="btn btn-outline-secondary" type="button" id="selectExecPathBtn">选择文件</button></div></div>
-              <div class="mb-3"><label class="form-label">启动参数</label><input class="form-control form-control-sm" id="execArgsInput" placeholder="例如：--port 3000"></div>
+              <div class="mb-3"><label class="form-label">启动方式</label><select class="form-select form-select-sm" id="execModeInput"><option value="file">使用执行文件路径</option><option value="command">使用执行命令</option></select></div>
+              <div class="mb-3" id="execPathGroup"><label class="form-label">执行文件路径</label><div class="input-group input-group-sm"><input class="form-control" id="execPathInput"><button class="btn btn-outline-secondary" type="button" id="selectExecPathBtn">选择文件</button></div></div>
+              <div class="mb-3"><label class="form-label" id="execArgsLabel">启动参数</label><input class="form-control form-control-sm" id="execArgsInput" placeholder="例如：--port 3000"></div>
               <div class="mb-3"><label class="form-label">工作目录</label><input class="form-control form-control-sm" id="execWorkDirInput" placeholder="默认使用项目目录"></div>
             </form>
           </div>
@@ -228,16 +229,26 @@ async function openProjectModal(project) {
   document.getElementById('projectNameInput').value = project?.name || '';
   document.getElementById('projectTypeInput').value = project?.type || 'Other';
   document.getElementById('projectRemarkInput').value = project?.remark || '';
+  document.getElementById('execModeInput').value = 'file';
   document.getElementById('execPathInput').value = '';
   document.getElementById('execArgsInput').value = '';
   document.getElementById('execWorkDirInput').value = project?.path || '';
   if (project?.id) {
     const executable = await window.projectManager.process.getExecutable(project.id);
+    document.getElementById('execModeInput').value = executable?.exec_path ? 'file' : 'command';
     document.getElementById('execPathInput').value = executable?.exec_path || '';
     document.getElementById('execArgsInput').value = executable?.args || '';
     document.getElementById('execWorkDirInput').value = executable?.work_dir || project.path || '';
   }
   bootstrap.Modal.getOrCreateInstance(document.getElementById('projectModal')).show();
+  updateExecutableFields();
+}
+
+function updateExecutableFields() {
+  const useCommand = document.getElementById('execModeInput').value === 'command';
+  document.getElementById('execPathGroup').classList.toggle('d-none', useCommand);
+  document.getElementById('execArgsLabel').textContent = useCommand ? '执行命令' : '启动参数';
+  document.getElementById('execArgsInput').placeholder = useCommand ? '例如：pnpm dev' : '例如：--port 3000';
 }
 
 function writeTerminalText(data) {
@@ -422,10 +433,15 @@ async function clearProjectLog() {
 async function saveProject() {
   const payload = { path: document.getElementById('projectPathInput').value.trim(), name: document.getElementById('projectNameInput').value.trim(), type: document.getElementById('projectTypeInput').value, remark: document.getElementById('projectRemarkInput').value.trim() };
   if (!payload.path || !payload.name) { alert('请填写项目目录和项目名称'); return; }
+  const useCommand = document.getElementById('execModeInput').value === 'command';
+  const execPath = useCommand ? '' : document.getElementById('execPathInput').value.trim();
+  const execArgs = document.getElementById('execArgsInput').value.trim();
+  if (useCommand && !execArgs) { alert('请填写执行命令'); return; }
+  if (!useCommand && !execPath) { alert('请填写执行文件路径'); return; }
   const project = projectsState.editingId
     ? await window.projectManager.projects.update(projectsState.editingId, payload)
     : await window.projectManager.projects.create(payload);
-  const executablePayload = { exec_path: document.getElementById('execPathInput').value.trim(), args: document.getElementById('execArgsInput').value.trim(), work_dir: document.getElementById('execWorkDirInput').value.trim() };
+  const executablePayload = { exec_path: execPath, args: execArgs, work_dir: document.getElementById('execWorkDirInput').value.trim() };
   await window.projectManager.process.saveExecutable(project.id, executablePayload);
   bootstrap.Modal.getInstance(document.getElementById('projectModal')).hide();
   await loadProjects();
@@ -437,6 +453,7 @@ async function selectProjectDirectory() {
   document.getElementById('projectPathInput').value = selected.path;
   document.getElementById('projectNameInput').value = selected.name;
   document.getElementById('projectTypeInput').value = selected.type;
+  updateExecutableFields();
 }
 
 async function selectExecutable() {
@@ -486,6 +503,7 @@ function bindProjectsEvents() {
   document.getElementById('selectConfigTargetBtn').addEventListener('click', () => selectConfigFile('configTargetInput'));
   document.getElementById('selectProjectPathBtn').addEventListener('click', selectProjectDirectory);
   document.getElementById('selectExecPathBtn').addEventListener('click', selectExecutable);
+  document.getElementById('execModeInput').addEventListener('change', updateExecutableFields);
   document.getElementById('projectSearchInput').addEventListener('input', (event) => { projectsState.keyword = event.target.value; document.getElementById('projectTableBody').innerHTML = renderProjectRows(); });
   document.getElementById('projectTypeTabs').addEventListener('click', (event) => { const button = event.target.closest('[data-project-type]'); if (!button) return; projectsState.activeType = button.dataset.projectType; refreshTable(); });
   document.getElementById('projectTableBody').addEventListener('click', async (event) => {
