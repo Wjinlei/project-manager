@@ -13,7 +13,9 @@ let projectsState = {
   terminal: null,
   fitAddon: null,
   terminalUnsubscribe: null,
-  logUnsubscribe: null
+  logUnsubscribe: null,
+  operatingProjectId: null,
+  operatingAction: null
 };
 
 function escapeHtml(value) {
@@ -40,7 +42,20 @@ function typeClass(type) {
 }
 
 function runtimeOf(projectId) {
-  return projectsState.runtimeStatuses.find((status) => status.projectId === projectId);
+  return projectsState.runtimeStatuses.find((status) => Number(status.projectId) === Number(projectId));
+}
+
+function isProjectOperating(projectId) {
+  return Number(projectsState.operatingProjectId) === Number(projectId);
+}
+
+function actionText(action, fallback) {
+  const map = {
+    start: '启动中...',
+    stop: '停止中...',
+    restart: '重启中...'
+  };
+  return map[action] || fallback;
 }
 
 function getFilteredProjects() {
@@ -69,9 +84,12 @@ function renderProjectRows() {
 
   return projects.map((project) => {
     const runtime = runtimeOf(project.id);
-    const isRunning = Boolean(runtime?.running);
+    const isRunning = Boolean(runtime?.running) || project.status === 'running';
+    const isOperating = isProjectOperating(project.id);
     const status = isRunning ? 'running' : project.status;
     const sourceText = runtime?.source === 'external' ? '外部' : runtime?.source === 'managed' ? '托管' : '';
+    const operatingAction = isOperating ? projectsState.operatingAction : null;
+    const operatingText = actionText(operatingAction, '处理中...');
     return `
       <tr>
         <td>
@@ -84,9 +102,9 @@ function renderProjectRows() {
         <td class="project-path" title="${escapeHtml(project.path)}">${escapeHtml(project.path)}</td>
         <td>${escapeHtml(project.updated_at || project.created_at || '')}</td>
         <td class="text-end text-nowrap">
-          <button class="btn btn-sm btn-outline-success" data-action="start" data-id="${project.id}" ${isRunning ? 'disabled' : ''}>启动</button>
-          <button class="btn btn-sm btn-outline-warning" data-action="stop" data-id="${project.id}" ${isRunning ? '' : 'disabled'}>停止</button>
-          <button class="btn btn-sm btn-outline-primary" data-action="restart" data-id="${project.id}">重启</button>
+          <button class="btn btn-sm btn-outline-success" data-action="start" data-id="${project.id}" ${isRunning || isOperating ? 'disabled' : ''}>${isOperating ? operatingText : '启动'}</button>
+          <button class="btn btn-sm btn-outline-warning" data-action="stop" data-id="${project.id}" ${(!isRunning && !isOperating) || isOperating ? 'disabled' : ''}>${isOperating ? operatingText : '停止'}</button>
+          <button class="btn btn-sm btn-outline-primary" data-action="restart" data-id="${project.id}" ${isOperating ? 'disabled' : ''}>${isOperating ? operatingText : '重启'}</button>
           <button class="btn btn-sm btn-outline-dark" data-action="terminal" data-id="${project.id}">终端</button>
           <button class="btn btn-sm btn-outline-secondary" data-action="configs" data-id="${project.id}">配置</button>
           <button class="btn btn-sm btn-outline-secondary" data-action="edit" data-id="${project.id}">设置</button>
@@ -433,15 +451,24 @@ async function deleteProject(id) {
 }
 
 async function runProjectAction(action, id) {
+  if (projectsState.operatingProjectId) {
+    return;
+  }
+  projectsState.operatingProjectId = id;
+  projectsState.operatingAction = action;
+  document.getElementById('projectTableBody').innerHTML = renderProjectRows();
   try {
     const result = await window.projectManager.process[action](id);
     if (result?.message) {
       alert(result.message);
     }
     projectsState.projects = await window.projectManager.projects.list();
-    await refreshTable();
   } catch (error) {
     alert(error.message || '操作失败');
+  } finally {
+    projectsState.operatingProjectId = null;
+    projectsState.operatingAction = null;
+    await refreshTable();
   }
 }
 

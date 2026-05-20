@@ -370,6 +370,18 @@ function waitForProcessExit(child, timeoutMs = STOP_TIMEOUT_MS) {
   });
 }
 
+function killProcessTree(pid) {
+  return new Promise((resolve) => {
+    if (process.platform !== 'win32') {
+      resolve(false);
+      return;
+    }
+    execFile('taskkill.exe', ['/PID', String(pid), '/T', '/F'], { windowsHide: true }, (error) => {
+      resolve(!error);
+    });
+  });
+}
+
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -471,11 +483,19 @@ async function stopProject(projectId) {
 
   let stopped = false;
   try {
-    if (!runtime.process.killed) {
+    if (process.platform === 'win32') {
+      const killedTree = await killProcessTree(runtime.process.pid);
+      stopped = killedTree;
+      if (killedTree) {
+        await waitForProcessExit(runtime.process, 2000);
+      }
+    } else if (!runtime.process.killed) {
       runtime.process.kill('SIGTERM');
     }
-    const gracefulResult = await waitForProcessExit(runtime.process);
-    stopped = gracefulResult.exited;
+    if (!stopped) {
+      const gracefulResult = await waitForProcessExit(runtime.process);
+      stopped = gracefulResult.exited;
+    }
     if (!stopped) {
       if (runningProcesses.has(id)) {
         runtime.process.kill('SIGKILL');
