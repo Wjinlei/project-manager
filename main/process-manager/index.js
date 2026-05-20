@@ -632,13 +632,9 @@ async function listRuntimeStatuses() {
   const projects = repositories.projects.findAll();
   const statuses = [];
   for (const project of projects) {
-    try {
-      const status = await getRuntimeStatus(project.id);
-      if (status.running) {
-        statuses.push(status);
-      }
-    } catch (error) {
-      appendProjectLog(project.id, 'stderr', `状态检测失败: ${error.message}\n`);
+    const status = await getRuntimeStatus(project.id);
+    if (status.running) {
+      statuses.push(status);
     }
   }
   return statuses;
