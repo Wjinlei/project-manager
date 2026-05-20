@@ -1,11 +1,11 @@
-let workflowState = { projects: [], workflows: [], selectedWorkflowId: null, unsubscribe: null, statuses: {} };
+﻿let workflowState = { projects: [], workflows: [], selectedWorkflowId: null, unsubscribe: null, statuses: {} };
 
 function wfEscape(value) {
   return String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;');
 }
 
 function workflowProjectName(projectId) {
-  return workflowState.projects.find((project) => project.id === projectId)?.name || '-';
+  return workflowState.projects.find((project) => Number(project.id) === Number(projectId))?.name || '-';
 }
 
 function renderWorkflowPage() {
@@ -27,19 +27,26 @@ function renderWorkflowList() {
   return workflowState.workflows.map((workflow) => `
     <button class="list-group-item list-group-item-action ${workflowState.selectedWorkflowId === workflow.id ? 'active' : ''}" data-workflow-id="${workflow.id}">
       <div class="fw-semibold">${wfEscape(workflow.name)}</div>
-      <div class="small">${wfEscape(workflowProjectName(workflow.project_id))} · ${workflow.steps.length} 个步骤</div>
+      <div class="small">${workflow.steps.length} 个步骤</div>
     </button>
   `).join('');
 }
 
+function renderProjectOptions() {
+  return workflowState.projects.map((project) => `<option value="${project.id}">${wfEscape(project.name)} (${wfEscape(project.type)})</option>`).join('');
+}
+
 function renderStepRows(workflow) {
-  if (!workflow.steps.length) return '<tr><td colspan="6" class="text-center text-muted py-4">暂无步骤</td></tr>';
+  if (!workflow.steps.length) return '<tr><td colspan="5" class="text-center text-muted py-4">暂无步骤，请从项目列表选择添加。</td></tr>';
   const status = workflowState.statuses[workflow.id];
   return workflow.steps.map((step) => {
     const stepStatus = status?.steps?.find((item) => item.id === step.id)?.status || 'waiting';
     return `
       <tr>
-        <td>${step.step_order}</td><td>${wfEscape(step.name)}</td><td>${wfEscape(step.command)}</td><td>${wfEscape(step.work_dir || '')}</td><td>${step.timeout || '-'}</td><td><span class="badge text-bg-secondary">${wfEscape(stepStatus)}</span></td>
+        <td>${step.step_order}</td>
+        <td>${wfEscape(step.name)}</td>
+        <td>${wfEscape(workflowProjectName(step.project_id))}</td>
+        <td><span class="badge text-bg-secondary">${wfEscape(stepStatus)}</span></td>
         <td class="text-end"><button class="btn btn-sm btn-outline-danger" data-step-delete="${step.id}">删除</button></td>
       </tr>
     `;
@@ -52,21 +59,26 @@ function renderEditor() {
   const running = Boolean(workflowState.statuses[workflow.id]?.running);
   document.getElementById('workflowEditor').innerHTML = `
     <div class="d-flex justify-content-between align-items-center mb-3">
-      <div><h5 class="mb-1">${wfEscape(workflow.name)}</h5><div class="text-muted small">项目：${wfEscape(workflowProjectName(workflow.project_id))}</div></div>
-      <div><button class="btn btn-sm btn-outline-success" id="runWorkflowBtn" ${running ? 'disabled' : ''}>执行</button><button class="btn btn-sm btn-outline-warning" id="stopWorkflowBtn" ${running ? '' : 'disabled'}>中止</button><button class="btn btn-sm btn-outline-danger" id="deleteWorkflowBtn">删除流程</button></div>
+      <div>
+        <input class="form-control form-control-sm fw-semibold" id="workflowNameInput" value="${wfEscape(workflow.name)}">
+        <div class="text-muted small mt-1">按顺序启动所选项目。</div>
+      </div>
+      <div class="text-nowrap">
+        <button class="btn btn-sm btn-outline-secondary" id="saveWorkflowBtn">保存名称</button>
+        <button class="btn btn-sm btn-outline-success" id="runWorkflowBtn" ${running ? 'disabled' : ''}>执行</button>
+        <button class="btn btn-sm btn-outline-warning" id="stopWorkflowBtn" ${running ? '' : 'disabled'}>中止</button>
+        <button class="btn btn-sm btn-outline-danger" id="deleteWorkflowBtn">删除流程</button>
+      </div>
     </div>
     <div class="border rounded p-3 mb-3">
       <div class="row g-2">
-        <div class="col-md-2"><input class="form-control form-control-sm" id="stepOrderInput" type="number" placeholder="序号"></div>
-        <div class="col-md-2"><input class="form-control form-control-sm" id="stepNameInput" placeholder="步骤名"></div>
-        <div class="col-md-4"><input class="form-control form-control-sm" id="stepCommandInput" placeholder="命令"></div>
-        <div class="col-md-2"><input class="form-control form-control-sm" id="stepWorkDirInput" placeholder="工作目录"></div>
-        <div class="col-md-1"><input class="form-control form-control-sm" id="stepTimeoutInput" type="number" placeholder="超时"></div>
-        <div class="col-md-1"><button class="btn btn-sm btn-bt w-100" id="addStepBtn">添加</button></div>
+        <div class="col-md-9"><select class="form-select form-select-sm" id="stepProjectInput">${renderProjectOptions()}</select></div>
+        <div class="col-md-3"><button class="btn btn-sm btn-bt w-100" id="addStepBtn" ${workflowState.projects.length === 0 ? 'disabled' : ''}>添加项目步骤</button></div>
       </div>
     </div>
-    <table class="table table-hover align-middle bt-table"><thead><tr><th>序号</th><th>名称</th><th>命令</th><th>工作目录</th><th>超时(s)</th><th>状态</th><th class="text-end">操作</th></tr></thead><tbody>${renderStepRows(workflow)}</tbody></table>
+    <table class="table table-hover align-middle bt-table"><thead><tr><th>序号</th><th>步骤名称</th><th>项目</th><th>状态</th><th class="text-end">操作</th></tr></thead><tbody>${renderStepRows(workflow)}</tbody></table>
   `;
+  document.getElementById('saveWorkflowBtn').addEventListener('click', saveWorkflowName);
   document.getElementById('runWorkflowBtn').addEventListener('click', () => window.projectManager.workflows.execute(workflow.id, { onFailure: 'abort' }));
   document.getElementById('stopWorkflowBtn').addEventListener('click', () => window.projectManager.workflows.stop(workflow.id));
   document.getElementById('deleteWorkflowBtn').addEventListener('click', async () => { if (confirm('确定删除该流程吗？')) { await window.projectManager.workflows.delete(workflow.id); workflowState.selectedWorkflowId = null; await loadWorkflows(); } });
@@ -76,22 +88,33 @@ function renderEditor() {
 
 async function addWorkflow() {
   const name = prompt('流程名称');
-  if (!name) return;
-  const projectId = workflowState.projects[0]?.id || null;
-  const workflow = await window.projectManager.workflows.create({ name, type: 'single', project_id: projectId, description: '' });
+  if (!name?.trim()) return;
+  const workflow = await window.projectManager.workflows.create({ name: name.trim(), type: 'multi', project_id: null, description: '' });
   workflowState.selectedWorkflowId = workflow.id;
+  await loadWorkflows();
+}
+
+async function saveWorkflowName() {
+  const workflow = workflowState.workflows.find((item) => item.id === workflowState.selectedWorkflowId);
+  const name = document.getElementById('workflowNameInput').value.trim();
+  if (!workflow || !name) return;
+  await window.projectManager.workflows.update(workflow.id, { name, type: workflow.type, project_id: workflow.project_id, description: workflow.description || '' });
   await loadWorkflows();
 }
 
 async function addStep() {
   const workflow = workflowState.workflows.find((item) => item.id === workflowState.selectedWorkflowId);
+  const projectId = Number(document.getElementById('stepProjectInput').value);
+  const project = workflowState.projects.find((item) => item.id === projectId);
+  if (!workflow || !project) return;
   await window.projectManager.workflows.createStep(workflow.id, {
-    step_order: Number(document.getElementById('stepOrderInput').value || workflow.steps.length + 1),
-    name: document.getElementById('stepNameInput').value || '未命名步骤',
-    command: document.getElementById('stepCommandInput').value,
-    work_dir: document.getElementById('stepWorkDirInput').value,
-    timeout: document.getElementById('stepTimeoutInput').value,
-    project_id: workflow.project_id
+    step_order: workflow.steps.length + 1,
+    name: `启动 ${project.name}`,
+    command: '',
+    work_dir: project.path,
+    timeout: '',
+    project_id: project.id,
+    action_type: 'start_project'
   });
   await loadWorkflows();
 }

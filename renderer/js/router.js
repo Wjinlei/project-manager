@@ -1,30 +1,8 @@
 const pageDefinitions = {
   dashboard: {
-    title: '首页',
-    render: () => `
-      <div class="stat-grid mb-3">
-        <div class="stat-card">
-          <div class="stat-label">总项目数</div>
-          <div class="stat-value">0</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">运行中</div>
-          <div class="stat-value">0</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">已停止</div>
-          <div class="stat-value">0</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">计划任务</div>
-          <div class="stat-value">0</div>
-        </div>
-      </div>
-      <div class="placeholder-panel">
-        <h5>欢迎使用本地项目管理系统</h5>
-        <p>后续任务将接入项目统计、运行状态和最近活动。</p>
-      </div>
-    `
+    title: '首页统计',
+    render: () => window.dashboardPage.render(),
+    mount: () => window.dashboardPage.mount()
   },
   projects: {
     title: '项目管理',

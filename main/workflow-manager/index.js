@@ -1,6 +1,7 @@
 const { spawn } = require('child_process');
 const { getRepositories } = require('../database');
 const { appendOutput } = require('../process-manager');
+const { startProject } = require('../process-manager');
 
 const runningWorkflows = new Map();
 let mainWindowGetter;
@@ -94,7 +95,11 @@ function writeStepOutput(projectId, data, type = 'stdout') {
   windowRef()?.webContents.send('terminal:output', output);
 }
 
-function runStep(step, project) {
+async function runStep(step, project) {
+  if (step.action_type === 'start_project') {
+    await startProject(step.project_id);
+    return { ok: true, code: 0 };
+  }
   return new Promise((resolve) => {
     if (!step.command) {
       resolve({ ok: true, code: 0 });
