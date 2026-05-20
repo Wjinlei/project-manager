@@ -43,7 +43,7 @@ function renderDashboardRows() {
   }
   return dashboardState.projects.map((project) => {
     const runtime = dashboardRuntimeOf(project.id);
-    const isRunning = Boolean(runtime?.running) || project.status === 'running';
+    const isRunning = Boolean(runtime?.running);
     const status = isRunning ? 'running' : 'stopped';
     return `
       <tr>
@@ -60,7 +60,7 @@ async function loadDashboard() {
   dashboardState.projects = await window.projectManager.projects.list();
   dashboardState.runtimeStatuses = await window.projectManager.process.listStatuses();
   dashboardState.workflows = await window.projectManager.workflows.list();
-  const runningCount = dashboardState.projects.filter((project) => Boolean(dashboardRuntimeOf(project.id)?.running) || project.status === 'running').length;
+  const runningCount = dashboardState.projects.filter((project) => Boolean(dashboardRuntimeOf(project.id)?.running)).length;
   document.getElementById('dashboardProjectCount').textContent = dashboardState.projects.length;
   document.getElementById('dashboardRunningCount').textContent = runningCount;
   document.getElementById('dashboardStoppedCount').textContent = Math.max(0, dashboardState.projects.length - runningCount);

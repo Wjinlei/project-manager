@@ -13,9 +13,8 @@ function workflowRuntimeOf(projectId) {
 }
 
 function workflowProjectStatus(projectId) {
-  const project = workflowState.projects.find((item) => Number(item.id) === Number(projectId));
   const runtime = workflowRuntimeOf(projectId);
-  const isRunning = Boolean(runtime?.running) || project?.status === 'running';
+  const isRunning = Boolean(runtime?.running);
   return isRunning ? 'running' : 'stopped';
 }
 

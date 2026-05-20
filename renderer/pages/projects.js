@@ -95,9 +95,9 @@ function renderProjectRows() {
 
   return projects.map((project) => {
     const runtime = runtimeOf(project.id);
-    const isRunning = Boolean(runtime?.running) || project.status === 'running';
+    const isRunning = Boolean(runtime?.running);
     const isOperating = isProjectOperating(project.id);
-    const status = isRunning ? 'running' : project.status;
+    const status = isRunning ? 'running' : 'stopped';
     const sourceText = runtime?.source === 'external' ? '外部' : runtime?.source === 'managed' ? '托管' : '';
     const operatingAction = isOperating ? projectsState.operatingAction : null;
     const operatingText = actionText(operatingAction, '处理中...');
