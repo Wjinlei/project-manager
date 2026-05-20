@@ -89,12 +89,17 @@ function getPm2Name(projectId) {
 
 function pm2Call(method, ...args) {
   return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error('PM2 连接超时'));
+    }, 3000);
     pm2.connect((connectError) => {
       if (connectError) {
+        clearTimeout(timer);
         reject(connectError);
         return;
       }
       pm2[method](...args, (error, result) => {
+        clearTimeout(timer);
         pm2.disconnect();
         if (error) {
           reject(error);
@@ -657,9 +662,13 @@ async function listRuntimeStatuses() {
   const projects = repositories.projects.findAll();
   const statuses = [];
   for (const project of projects) {
-    const status = await getRuntimeStatus(project.id);
-    if (status.running) {
-      statuses.push(status);
+    try {
+      const status = await getRuntimeStatus(project.id);
+      if (status.running) {
+        statuses.push(status);
+      }
+    } catch (error) {
+      appendProjectLog(project.id, 'stderr', `状态检测失败: ${error.message}\n`);
     }
   }
   return statuses;
