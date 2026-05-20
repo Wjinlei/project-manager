@@ -21,5 +21,14 @@ contextBridge.exposeInMainWorld('projectManager', {
     status: (projectId) => ipcRenderer.invoke('process:status', projectId),
     listStatuses: () => ipcRenderer.invoke('process:list-statuses'),
     selectExecutable: () => ipcRenderer.invoke('process:select-executable')
+  },
+  terminal: {
+    getHistory: (projectId) => ipcRenderer.invoke('terminal:get-history', projectId),
+    clear: (projectId) => ipcRenderer.invoke('terminal:clear', projectId),
+    onOutput: (callback) => {
+      const listener = (_event, output) => callback(output);
+      ipcRenderer.on('terminal:output', listener);
+      return () => ipcRenderer.removeListener('terminal:output', listener);
+    }
   }
 });

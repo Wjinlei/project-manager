@@ -255,3 +255,20 @@ body {
 .status-dot.error {
   background: #dc3545;
 }
+
+.terminal-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.terminal-container {
+  height: calc(100vh - 160px);
+  min-height: 420px;
+  padding: 8px;
+  background: #111827;
+  border-radius: 7px;
+  overflow: hidden;
+}

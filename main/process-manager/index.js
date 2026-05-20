@@ -3,6 +3,25 @@ const path = require('path');
 const { getRepositories } = require('../database');
 
 const runningProcesses = new Map();
+const outputBuffers = new Map();
+const MAX_OUTPUT_LINES = 1000;
+let mainWindow;
+
+function getMainWindow() {
+  return typeof mainWindow === 'function' ? mainWindow() : mainWindow;
+}
+
+function appendOutput(projectId, type, data) {
+  const id = Number(projectId);
+  const item = { projectId: id, type, data, time: new Date().toISOString() };
+  const buffer = outputBuffers.get(id) || [];
+  buffer.push(item);
+  if (buffer.length > MAX_OUTPUT_LINES) {
+    buffer.splice(0, buffer.length - MAX_OUTPUT_LINES);
+  }
+  outputBuffers.set(id, buffer);
+  return item;
+}
 
 function parseArgs(args) {
   if (!args || !args.trim()) {
@@ -85,17 +104,13 @@ function startProject(projectId) {
   updateProjectStatus(id, 'running');
 
   child.stdout?.on('data', (chunk) => {
-    const runtime = runningProcesses.get(id);
-    if (runtime) {
-      runtime.output.push({ type: 'stdout', data: chunk.toString(), time: new Date().toISOString() });
-    }
+    const output = appendOutput(id, 'stdout', chunk.toString());
+    getMainWindow()?.webContents.send('terminal:output', output);
   });
 
   child.stderr?.on('data', (chunk) => {
-    const runtime = runningProcesses.get(id);
-    if (runtime) {
-      runtime.output.push({ type: 'stderr', data: chunk.toString(), time: new Date().toISOString() });
-    }
+    const output = appendOutput(id, 'stderr', chunk.toString());
+    getMainWindow()?.webContents.send('terminal:output', output);
   });
 
   child.on('error', () => {
@@ -139,6 +154,15 @@ function listRuntimeStatuses() {
   }));
 }
 
+function getOutputHistory(projectId) {
+  return outputBuffers.get(Number(projectId)) || [];
+}
+
+function clearOutput(projectId) {
+  outputBuffers.set(Number(projectId), []);
+  return true;
+}
+
 async function selectExecutable(browserWindow) {
   const { dialog } = require('electron');
   const result = await dialog.showOpenDialog(browserWindow, {
@@ -153,6 +177,7 @@ async function selectExecutable(browserWindow) {
 }
 
 function registerProcessManagerIpc(ipcMain, getMainWindow) {
+  mainWindow = getMainWindow;
   ipcMain.handle('process:get-executable', (_event, projectId) => getExecutable(projectId));
   ipcMain.handle('process:save-executable', (_event, projectId, payload) => saveExecutable(projectId, payload));
   ipcMain.handle('process:start', (_event, projectId) => startProject(projectId));
@@ -161,6 +186,8 @@ function registerProcessManagerIpc(ipcMain, getMainWindow) {
   ipcMain.handle('process:status', (_event, projectId) => getRuntimeStatus(projectId));
   ipcMain.handle('process:list-statuses', () => listRuntimeStatuses());
   ipcMain.handle('process:select-executable', () => selectExecutable(getMainWindow()));
+  ipcMain.handle('terminal:get-history', (_event, projectId) => getOutputHistory(projectId));
+  ipcMain.handle('terminal:clear', (_event, projectId) => clearOutput(projectId));
 }
 
 module.exports = {
@@ -172,5 +199,8 @@ module.exports = {
   restartProject,
   getRuntimeStatus,
   listRuntimeStatuses,
+  getOutputHistory,
+  clearOutput,
+  appendOutput,
   registerProcessManagerIpc
 };

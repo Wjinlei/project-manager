@@ -41,7 +41,8 @@ const pageDefinitions = {
   },
   terminal: {
     title: '终端',
-    render: () => placeholder('终端', '后续将接入 xterm.js 实时输出。')
+    render: () => window.terminalPage.render(),
+    mount: () => window.terminalPage.mount()
   },
   git: {
     title: 'Git',
@@ -60,8 +61,13 @@ function placeholder(title, description) {
 
 window.appRouter = {
   pages: pageDefinitions,
+  currentPage: null,
   async navigate(pageId) {
+    if (this.currentPage?.unmount) {
+      this.currentPage.unmount();
+    }
     const page = pageDefinitions[pageId] || pageDefinitions.dashboard;
+    this.currentPage = page;
     document.getElementById('pageTitle').textContent = page.title;
     document.getElementById('appContent').innerHTML = page.render();
     document.querySelectorAll('.nav-item').forEach((item) => {
