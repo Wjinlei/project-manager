@@ -1,4 +1,4 @@
-﻿let workflowState = { projects: [], workflows: [], selectedWorkflowId: null, unsubscribe: null, statuses: {} };
+﻿let workflowState = { projects: [], runtimeStatuses: [], workflows: [], selectedWorkflowId: null, unsubscribe: null, statuses: {} };
 
 function wfEscape(value) {
   return String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;');
@@ -6,6 +6,17 @@ function wfEscape(value) {
 
 function workflowProjectName(projectId) {
   return workflowState.projects.find((project) => Number(project.id) === Number(projectId))?.name || '-';
+}
+
+function workflowRuntimeOf(projectId) {
+  return workflowState.runtimeStatuses.find((status) => Number(status.projectId) === Number(projectId));
+}
+
+function workflowProjectStatus(projectId) {
+  const project = workflowState.projects.find((item) => Number(item.id) === Number(projectId));
+  const runtime = workflowRuntimeOf(projectId);
+  const isRunning = Boolean(runtime?.running) || project?.status === 'running';
+  return isRunning ? 'running' : 'stopped';
 }
 
 function renderWorkflowPage() {
@@ -53,12 +64,14 @@ function renderStepRows(workflow) {
   const status = workflowState.statuses[workflow.id];
   return workflow.steps.map((step) => {
     const stepStatus = status?.steps?.find((item) => item.id === step.id)?.status || 'waiting';
+    const projectStatus = workflowProjectStatus(step.project_id);
+    const title = stepStatus === 'running' ? `${projectStatus} / 执行中` : projectStatus;
     return `
       <tr>
         <td>${step.step_order}</td>
         <td>${wfEscape(step.name)}</td>
         <td>${wfEscape(workflowProjectName(step.project_id))}</td>
-        <td><span class="badge text-bg-secondary">${wfEscape(stepStatus)}</span></td>
+        <td title="${wfEscape(title)}"><span class="status-dot ${projectStatus}"></span><span class="status-text ${projectStatus}">${wfEscape(projectStatus)}</span>${stepStatus === 'running' ? '<span class="badge text-bg-light ms-1">执行中</span>' : ''}</td>
         <td class="text-end"><button class="btn btn-sm btn-outline-danger" data-step-delete="${step.id}">删除</button></td>
       </tr>
     `;
@@ -91,7 +104,7 @@ function renderEditor() {
     <table class="table table-hover align-middle bt-table"><thead><tr><th>序号</th><th>步骤名称</th><th>项目</th><th>状态</th><th class="text-end">操作</th></tr></thead><tbody>${renderStepRows(workflow)}</tbody></table>
   `;
   document.getElementById('saveWorkflowBtn').addEventListener('click', saveWorkflowName);
-  document.getElementById('runWorkflowBtn').addEventListener('click', () => window.projectManager.workflows.execute(workflow.id, { onFailure: 'abort' }));
+  document.getElementById('runWorkflowBtn').addEventListener('click', async () => { await window.projectManager.workflows.execute(workflow.id, { onFailure: 'abort' }); await loadWorkflows(); });
   document.getElementById('stopWorkflowBtn').addEventListener('click', () => window.projectManager.workflows.stop(workflow.id));
   document.getElementById('deleteWorkflowBtn').addEventListener('click', async () => { if (confirm('确定删除该流程吗？')) { await window.projectManager.workflows.delete(workflow.id); workflowState.selectedWorkflowId = null; await loadWorkflows(); } });
   document.getElementById('addStepBtn').addEventListener('click', addStep);
@@ -139,6 +152,7 @@ async function addStep() {
 
 async function loadWorkflows() {
   workflowState.projects = await window.projectManager.projects.list();
+  workflowState.runtimeStatuses = await window.projectManager.process.listStatuses();
   workflowState.workflows = await window.projectManager.workflows.list();
   document.getElementById('workflowList').innerHTML = renderWorkflowList();
   document.querySelectorAll('[data-workflow-id]').forEach((button) => button.addEventListener('click', () => { workflowState.selectedWorkflowId = Number(button.dataset.workflowId); document.getElementById('workflowList').innerHTML = renderWorkflowList(); renderEditor(); }));
@@ -149,7 +163,7 @@ window.workflowsPage = {
   render: renderWorkflowPage,
   async mount() {
     document.getElementById('appContent').addEventListener('click', handleWorkflowClick);
-    workflowState.unsubscribe = window.projectManager.workflows.onStatus((status) => { workflowState.statuses[status.workflowId] = status; renderEditor(); });
+    workflowState.unsubscribe = window.projectManager.workflows.onStatus(async (status) => { workflowState.statuses[status.workflowId] = status; workflowState.runtimeStatuses = await window.projectManager.process.listStatuses(); renderEditor(); });
     await loadWorkflows();
   },
   unmount() {
