@@ -11,9 +11,14 @@ const MAX_OUTPUT_LINES = 1000;
 const MAX_LOG_BYTES = 1024 * 1024;
 const STOP_TIMEOUT_MS = 5000;
 let mainWindow;
+let appQuitting = false;
 
 function getMainWindow() {
   return typeof mainWindow === 'function' ? mainWindow() : mainWindow;
+}
+
+function markAppQuitting() {
+  appQuitting = true;
 }
 
 function appendOutput(projectId, type, data) {
@@ -524,8 +529,10 @@ async function startProject(projectId) {
 
   child.on('error', (err) => {
     runningProcesses.delete(id);
-    removeRuntimeStatus(id);
-    updateProjectStatus(id, 'error');
+    if (!appQuitting) {
+      removeRuntimeStatus(id);
+      updateProjectStatus(id, 'error');
+    }
     appendProjectLog(id, 'stderr', `启动失败: ${err.message} (文件: ${executable.exec_path})\n`);
     getMainWindow()?.webContents.send('terminal:output', {
       projectId: id,
@@ -537,8 +544,10 @@ async function startProject(projectId) {
 
   child.on('exit', (code) => {
     runningProcesses.delete(id);
-    removeRuntimeStatus(id);
-    updateProjectStatus(id, code === 0 ? 'stopped' : 'error');
+    if (!appQuitting) {
+      removeRuntimeStatus(id);
+      updateProjectStatus(id, code === 0 ? 'stopped' : 'error');
+    }
     appendProjectLog(id, 'system', `进程已退出，退出码: ${code}\n`);
   });
 
@@ -721,5 +730,6 @@ module.exports = {
   stopLogWatch,
   getExternalStartCommand,
   appendOutput,
+  markAppQuitting,
   registerProcessManagerIpc
 };

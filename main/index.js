@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const { initializeDatabase, closeDatabase } = require('./database');
 const { registerProjectManagerIpc } = require('./project-manager');
-const { registerProcessManagerIpc } = require('./process-manager');
+const { registerProcessManagerIpc, markAppQuitting } = require('./process-manager');
 const { registerConfigManagerIpc } = require('./config-manager');
 const { registerWorkflowManagerIpc } = require('./workflow-manager');
 const { registerSettingsManagerIpc } = require('./settings-manager');
@@ -49,6 +49,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+  markAppQuitting();
   closeDatabase();
 });
 
