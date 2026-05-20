@@ -1,0 +1,15 @@
+appId: com.local.projectmanagertool
+productName: 本地项目管理系统
+directories:
+  output: dist
+files:
+  - main/**/*
+  - renderer/**/*
+  - package.json
+win:
+  target:
+    - nsis
+  icon: build/icon.ico
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
