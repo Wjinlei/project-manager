@@ -251,3 +251,7 @@ body {
 .status-dot.running {
   background: var(--bt-primary);
 }
+
+.status-dot.error {
+  background: #dc3545;
+}

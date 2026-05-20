@@ -11,5 +11,15 @@ contextBridge.exposeInMainWorld('projectManager', {
     delete: (id) => ipcRenderer.invoke('projects:delete', id),
     detectType: (projectPath) => ipcRenderer.invoke('projects:detect-type', projectPath),
     selectDirectory: () => ipcRenderer.invoke('projects:select-directory')
+  },
+  process: {
+    getExecutable: (projectId) => ipcRenderer.invoke('process:get-executable', projectId),
+    saveExecutable: (projectId, payload) => ipcRenderer.invoke('process:save-executable', projectId, payload),
+    start: (projectId) => ipcRenderer.invoke('process:start', projectId),
+    stop: (projectId) => ipcRenderer.invoke('process:stop', projectId),
+    restart: (projectId) => ipcRenderer.invoke('process:restart', projectId),
+    status: (projectId) => ipcRenderer.invoke('process:status', projectId),
+    listStatuses: () => ipcRenderer.invoke('process:list-statuses'),
+    selectExecutable: () => ipcRenderer.invoke('process:select-executable')
   }
 });

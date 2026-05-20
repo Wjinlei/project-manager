@@ -1,10 +1,12 @@
-const PROJECT_TYPES = ['全部', 'Go', 'Node', 'Python', 'Java', '.NET', 'PHP', 'HTML', 'Other'];
+﻿const PROJECT_TYPES = ['全部', 'Go', 'Node', 'Python', 'Java', '.NET', 'PHP', 'HTML', 'Other'];
 
 let projectsState = {
   projects: [],
+  runtimeStatuses: [],
   activeType: '全部',
   keyword: '',
-  editingId: null
+  editingId: null,
+  executableProjectId: null
 };
 
 function escapeHtml(value) {
@@ -30,6 +32,10 @@ function typeClass(type) {
   return map[type] || map.Other;
 }
 
+function runtimeOf(projectId) {
+  return projectsState.runtimeStatuses.find((status) => status.projectId === projectId);
+}
+
 function getFilteredProjects() {
   return projectsState.projects.filter((project) => {
     const typeMatched = projectsState.activeType === '全部' || project.type === projectsState.activeType;
@@ -51,25 +57,35 @@ function renderProjectTabs() {
 function renderProjectRows() {
   const projects = getFilteredProjects();
   if (projects.length === 0) {
-    return '<tr><td colspan="6" class="text-center text-muted py-5">暂无项目，请先添加本地目录。</td></tr>';
+    return '<tr><td colspan="7" class="text-center text-muted py-5">暂无项目，请先添加本地目录。</td></tr>';
   }
 
-  return projects.map((project) => `
-    <tr>
-      <td>
-        <div class="fw-semibold">${escapeHtml(project.name)}</div>
-        <div class="text-muted small">${escapeHtml(project.remark || '无备注')}</div>
-      </td>
-      <td><span class="badge ${typeClass(project.type)}">${escapeHtml(project.type)}</span></td>
-      <td><span class="status-dot ${project.status === 'running' ? 'running' : ''}"></span>${escapeHtml(project.status)}</td>
-      <td class="project-path" title="${escapeHtml(project.path)}">${escapeHtml(project.path)}</td>
-      <td>${escapeHtml(project.updated_at || project.created_at || '')}</td>
-      <td class="text-end">
-        <button class="btn btn-sm btn-outline-secondary" data-action="edit" data-id="${project.id}">设置</button>
-        <button class="btn btn-sm btn-outline-danger" data-action="delete" data-id="${project.id}">删除</button>
-      </td>
-    </tr>
-  `).join('');
+  return projects.map((project) => {
+    const runtime = runtimeOf(project.id);
+    const isRunning = Boolean(runtime?.running);
+    const status = isRunning ? 'running' : project.status;
+    return `
+      <tr>
+        <td>
+          <div class="fw-semibold">${escapeHtml(project.name)}</div>
+          <div class="text-muted small">${escapeHtml(project.remark || '无备注')}</div>
+        </td>
+        <td><span class="badge ${typeClass(project.type)}">${escapeHtml(project.type)}</span></td>
+        <td><span class="status-dot ${status === 'running' ? 'running' : status === 'error' ? 'error' : ''}"></span>${escapeHtml(status)}</td>
+        <td>${runtime?.pid || '-'}</td>
+        <td class="project-path" title="${escapeHtml(project.path)}">${escapeHtml(project.path)}</td>
+        <td>${escapeHtml(project.updated_at || project.created_at || '')}</td>
+        <td class="text-end text-nowrap">
+          <button class="btn btn-sm btn-outline-success" data-action="start" data-id="${project.id}" ${isRunning ? 'disabled' : ''}>启动</button>
+          <button class="btn btn-sm btn-outline-warning" data-action="stop" data-id="${project.id}" ${isRunning ? '' : 'disabled'}>停止</button>
+          <button class="btn btn-sm btn-outline-primary" data-action="restart" data-id="${project.id}">重启</button>
+          <button class="btn btn-sm btn-outline-secondary" data-action="executable" data-id="${project.id}">执行文件</button>
+          <button class="btn btn-sm btn-outline-secondary" data-action="edit" data-id="${project.id}">设置</button>
+          <button class="btn btn-sm btn-outline-danger" data-action="delete" data-id="${project.id}">删除</button>
+        </td>
+      </tr>
+    `;
+  }).join('');
 }
 
 function renderProjectsPage() {
@@ -89,6 +105,7 @@ function renderProjectsPage() {
             <th>项目名称</th>
             <th>类型</th>
             <th>状态</th>
+            <th>PID</th>
             <th>项目路径</th>
             <th>更新时间</th>
             <th class="text-end">操作</th>
@@ -101,51 +118,44 @@ function renderProjectsPage() {
     <div class="modal fade" id="projectModal" tabindex="-1">
       <div class="modal-dialog modal-lg">
         <div class="modal-content">
-          <div class="modal-header">
-            <h5 class="modal-title" id="projectModalTitle">添加项目</h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-          </div>
+          <div class="modal-header"><h5 class="modal-title" id="projectModalTitle">添加项目</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
           <div class="modal-body">
             <form id="projectForm">
-              <div class="mb-3">
-                <label class="form-label">项目目录</label>
-                <div class="input-group input-group-sm">
-                  <input class="form-control" id="projectPathInput" required>
-                  <button class="btn btn-outline-secondary" type="button" id="selectProjectPathBtn">选择目录</button>
-                </div>
-              </div>
-              <div class="row g-3">
-                <div class="col-md-6">
-                  <label class="form-label">项目名称</label>
-                  <input class="form-control form-control-sm" id="projectNameInput" required>
-                </div>
-                <div class="col-md-6">
-                  <label class="form-label">项目类型</label>
-                  <select class="form-select form-select-sm" id="projectTypeInput">
-                    ${PROJECT_TYPES.filter((type) => type !== '全部').map((type) => `<option value="${escapeHtml(type)}">${escapeHtml(type)}</option>`).join('')}
-                  </select>
-                </div>
-              </div>
-              <div class="mt-3">
-                <label class="form-label">备注</label>
-                <textarea class="form-control form-control-sm" id="projectRemarkInput" rows="3"></textarea>
-              </div>
+              <div class="mb-3"><label class="form-label">项目目录</label><div class="input-group input-group-sm"><input class="form-control" id="projectPathInput" required><button class="btn btn-outline-secondary" type="button" id="selectProjectPathBtn">选择目录</button></div></div>
+              <div class="row g-3"><div class="col-md-6"><label class="form-label">项目名称</label><input class="form-control form-control-sm" id="projectNameInput" required></div><div class="col-md-6"><label class="form-label">项目类型</label><select class="form-select form-select-sm" id="projectTypeInput">${PROJECT_TYPES.filter((type) => type !== '全部').map((type) => `<option value="${escapeHtml(type)}">${escapeHtml(type)}</option>`).join('')}</select></div></div>
+              <div class="mt-3"><label class="form-label">备注</label><textarea class="form-control form-control-sm" id="projectRemarkInput" rows="3"></textarea></div>
             </form>
           </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">取消</button>
-            <button type="button" class="btn btn-sm btn-bt" id="saveProjectBtn">保存</button>
+          <div class="modal-footer"><button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">取消</button><button type="button" class="btn btn-sm btn-bt" id="saveProjectBtn">保存</button></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="executableModal" tabindex="-1">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header"><h5 class="modal-title">执行文件配置</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+          <div class="modal-body">
+            <div class="mb-3"><label class="form-label">执行文件路径</label><div class="input-group input-group-sm"><input class="form-control" id="execPathInput" required><button class="btn btn-outline-secondary" type="button" id="selectExecPathBtn">选择文件</button></div></div>
+            <div class="mb-3"><label class="form-label">启动参数</label><input class="form-control form-control-sm" id="execArgsInput" placeholder="例如：--port 3000"></div>
+            <div class="mb-3"><label class="form-label">工作目录</label><input class="form-control form-control-sm" id="execWorkDirInput" placeholder="默认使用项目目录"></div>
           </div>
+          <div class="modal-footer"><button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">取消</button><button type="button" class="btn btn-sm btn-bt" id="saveExecutableBtn">保存</button></div>
         </div>
       </div>
     </div>
   `;
 }
 
-async function loadProjects() {
-  projectsState.projects = await window.projectManager.projects.list();
+async function refreshTable() {
+  projectsState.runtimeStatuses = await window.projectManager.process.listStatuses();
   document.getElementById('projectTypeTabs').innerHTML = renderProjectTabs();
   document.getElementById('projectTableBody').innerHTML = renderProjectRows();
+}
+
+async function loadProjects() {
+  projectsState.projects = await window.projectManager.projects.list();
+  await refreshTable();
 }
 
 function openProjectModal(project) {
@@ -158,72 +168,76 @@ function openProjectModal(project) {
   bootstrap.Modal.getOrCreateInstance(document.getElementById('projectModal')).show();
 }
 
+async function openExecutableModal(projectId) {
+  projectsState.executableProjectId = projectId;
+  const project = projectsState.projects.find((item) => item.id === projectId);
+  const executable = await window.projectManager.process.getExecutable(projectId);
+  document.getElementById('execPathInput').value = executable?.exec_path || '';
+  document.getElementById('execArgsInput').value = executable?.args || '';
+  document.getElementById('execWorkDirInput').value = executable?.work_dir || project?.path || '';
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('executableModal')).show();
+}
+
 async function saveProject() {
-  const payload = {
-    path: document.getElementById('projectPathInput').value.trim(),
-    name: document.getElementById('projectNameInput').value.trim(),
-    type: document.getElementById('projectTypeInput').value,
-    remark: document.getElementById('projectRemarkInput').value.trim()
-  };
-
-  if (!payload.path || !payload.name) {
-    alert('请填写项目目录和项目名称');
-    return;
-  }
-
-  if (projectsState.editingId) {
-    await window.projectManager.projects.update(projectsState.editingId, payload);
-  } else {
-    await window.projectManager.projects.create(payload);
-  }
-
+  const payload = { path: document.getElementById('projectPathInput').value.trim(), name: document.getElementById('projectNameInput').value.trim(), type: document.getElementById('projectTypeInput').value, remark: document.getElementById('projectRemarkInput').value.trim() };
+  if (!payload.path || !payload.name) { alert('请填写项目目录和项目名称'); return; }
+  if (projectsState.editingId) await window.projectManager.projects.update(projectsState.editingId, payload); else await window.projectManager.projects.create(payload);
   bootstrap.Modal.getInstance(document.getElementById('projectModal')).hide();
   await loadProjects();
 }
 
+async function saveExecutable() {
+  const payload = { exec_path: document.getElementById('execPathInput').value.trim(), args: document.getElementById('execArgsInput').value.trim(), work_dir: document.getElementById('execWorkDirInput').value.trim() };
+  if (!payload.exec_path) { alert('请选择执行文件'); return; }
+  await window.projectManager.process.saveExecutable(projectsState.executableProjectId, payload);
+  bootstrap.Modal.getInstance(document.getElementById('executableModal')).hide();
+}
+
 async function selectProjectDirectory() {
   const selected = await window.projectManager.projects.selectDirectory();
-  if (!selected) {
-    return;
-  }
+  if (!selected) return;
   document.getElementById('projectPathInput').value = selected.path;
   document.getElementById('projectNameInput').value = selected.name;
   document.getElementById('projectTypeInput').value = selected.type;
 }
 
+async function selectExecutable() {
+  const selected = await window.projectManager.process.selectExecutable();
+  if (selected) document.getElementById('execPathInput').value = selected;
+}
+
 async function deleteProject(id) {
-  if (!confirm('确定要删除该项目吗？此操作只移除管理记录，不会删除本地文件。')) {
-    return;
-  }
+  if (!confirm('确定要删除该项目吗？此操作只移除管理记录，不会删除本地文件。')) return;
   await window.projectManager.projects.delete(id);
   await loadProjects();
+}
+
+async function runProjectAction(action, id) {
+  try {
+    await window.projectManager.process[action](id);
+    projectsState.projects = await window.projectManager.projects.list();
+    await refreshTable();
+  } catch (error) {
+    alert(error.message || '操作失败');
+  }
 }
 
 function bindProjectsEvents() {
   document.getElementById('addProjectBtn').addEventListener('click', () => openProjectModal());
   document.getElementById('saveProjectBtn').addEventListener('click', saveProject);
+  document.getElementById('saveExecutableBtn').addEventListener('click', saveExecutable);
   document.getElementById('selectProjectPathBtn').addEventListener('click', selectProjectDirectory);
-  document.getElementById('projectSearchInput').addEventListener('input', (event) => {
-    projectsState.keyword = event.target.value;
-    document.getElementById('projectTableBody').innerHTML = renderProjectRows();
-  });
-  document.getElementById('projectTypeTabs').addEventListener('click', (event) => {
-    const button = event.target.closest('[data-project-type]');
-    if (!button) return;
-    projectsState.activeType = button.dataset.projectType;
-    document.getElementById('projectTypeTabs').innerHTML = renderProjectTabs();
-    document.getElementById('projectTableBody').innerHTML = renderProjectRows();
-  });
+  document.getElementById('selectExecPathBtn').addEventListener('click', selectExecutable);
+  document.getElementById('projectSearchInput').addEventListener('input', (event) => { projectsState.keyword = event.target.value; document.getElementById('projectTableBody').innerHTML = renderProjectRows(); });
+  document.getElementById('projectTypeTabs').addEventListener('click', (event) => { const button = event.target.closest('[data-project-type]'); if (!button) return; projectsState.activeType = button.dataset.projectType; refreshTable(); });
   document.getElementById('projectTableBody').addEventListener('click', async (event) => {
     const button = event.target.closest('[data-action]');
     if (!button) return;
     const id = Number(button.dataset.id);
-    if (button.dataset.action === 'edit') {
-      openProjectModal(projectsState.projects.find((project) => project.id === id));
-    }
-    if (button.dataset.action === 'delete') {
-      await deleteProject(id);
-    }
+    if (button.dataset.action === 'edit') openProjectModal(projectsState.projects.find((project) => project.id === id));
+    if (button.dataset.action === 'delete') await deleteProject(id);
+    if (button.dataset.action === 'executable') await openExecutableModal(id);
+    if (['start', 'stop', 'restart'].includes(button.dataset.action)) await runProjectAction(button.dataset.action, id);
   });
 }
 
