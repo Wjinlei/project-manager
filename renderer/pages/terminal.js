@@ -40,7 +40,6 @@ function writeOutput(output) {
 }
 
 async function loadHistory(projectId) {
-  terminalState.terminal.clear();
   const history = await window.projectManager.terminal.getHistory(projectId);
   history.forEach(writeOutput);
 }
