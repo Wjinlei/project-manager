@@ -154,7 +154,6 @@ async function loadWorkflows() {
   workflowState.runtimeStatuses = await window.projectManager.process.listStatuses();
   workflowState.workflows = await window.projectManager.workflows.list();
   document.getElementById('workflowList').innerHTML = renderWorkflowList();
-  document.querySelectorAll('[data-workflow-id]').forEach((button) => button.addEventListener('click', () => { workflowState.selectedWorkflowId = Number(button.dataset.workflowId); document.getElementById('workflowList').innerHTML = renderWorkflowList(); renderEditor(); }));
   if (workflowState.selectedWorkflowId) renderEditor();
 }
 
@@ -173,8 +172,16 @@ window.workflowsPage = {
 };
 
 function handleWorkflowClick(event) {
+  const workflowButton = event.target.closest('[data-workflow-id]');
+  if (workflowButton) {
+    workflowState.selectedWorkflowId = Number(workflowButton.dataset.workflowId);
+    document.getElementById('workflowList').innerHTML = renderWorkflowList();
+    renderEditor();
+    return;
+  }
   if (event.target.closest('#addWorkflowBtn')) {
     bootstrap.Modal.getOrCreateInstance(document.getElementById('workflowModal')).show();
+    return;
   }
   if (event.target.closest('#saveNewWorkflowBtn')) {
     addWorkflow();
