@@ -33,7 +33,9 @@ const pageDefinitions = {
   },
   workflows: {
     title: '流程编排',
-    render: () => placeholder('流程编排', '后续将支持单项目流程与多项目流程。')
+    render: () => window.workflowsPage.render(),
+    mount: () => window.workflowsPage.mount(),
+    unmount: () => window.workflowsPage.unmount()
   },
   scheduler: {
     title: '计划任务',

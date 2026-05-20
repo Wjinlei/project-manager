@@ -4,6 +4,7 @@ const { initializeDatabase, closeDatabase } = require('./database');
 const { registerProjectManagerIpc } = require('./project-manager');
 const { registerProcessManagerIpc } = require('./process-manager');
 const { registerConfigManagerIpc } = require('./config-manager');
+const { registerWorkflowManagerIpc } = require('./workflow-manager');
 
 let mainWindow;
 
@@ -29,6 +30,7 @@ app.whenReady().then(() => {
   registerProjectManagerIpc(ipcMain, () => mainWindow);
   registerProcessManagerIpc(ipcMain, () => mainWindow);
   registerConfigManagerIpc(ipcMain, () => mainWindow);
+  registerWorkflowManagerIpc(ipcMain, () => mainWindow);
   createWindow();
 
   app.on('activate', () => {

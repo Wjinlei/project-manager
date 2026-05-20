@@ -40,5 +40,22 @@ contextBridge.exposeInMainWorld('projectManager', {
     switch: (configId) => ipcRenderer.invoke('configs:switch', configId),
     listBackups: (configId) => ipcRenderer.invoke('configs:list-backups', configId),
     selectFile: () => ipcRenderer.invoke('configs:select-file')
+  },
+  workflows: {
+    list: (projectId) => ipcRenderer.invoke('workflows:list', projectId),
+    create: (payload) => ipcRenderer.invoke('workflows:create', payload),
+    update: (workflowId, payload) => ipcRenderer.invoke('workflows:update', workflowId, payload),
+    delete: (workflowId) => ipcRenderer.invoke('workflows:delete', workflowId),
+    createStep: (workflowId, payload) => ipcRenderer.invoke('workflow-steps:create', workflowId, payload),
+    updateStep: (stepId, payload) => ipcRenderer.invoke('workflow-steps:update', stepId, payload),
+    deleteStep: (stepId) => ipcRenderer.invoke('workflow-steps:delete', stepId),
+    execute: (workflowId, options) => ipcRenderer.invoke('workflows:execute', workflowId, options),
+    stop: (workflowId) => ipcRenderer.invoke('workflows:stop', workflowId),
+    status: (workflowId) => ipcRenderer.invoke('workflows:status', workflowId),
+    onStatus: (callback) => {
+      const listener = (_event, status) => callback(status);
+      ipcRenderer.on('workflow:status', listener);
+      return () => ipcRenderer.removeListener('workflow:status', listener);
+    }
   }
 });
