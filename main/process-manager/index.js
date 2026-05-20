@@ -1,7 +1,8 @@
-const { execFile, spawn } = require('child_process');
+const { execFile } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const pm2 = require('pm2');
 const { getRepositories } = require('../database');
 
 const runningProcesses = new Map();
@@ -11,14 +12,9 @@ const MAX_OUTPUT_LINES = 1000;
 const MAX_LOG_BYTES = 1024 * 1024;
 const STOP_TIMEOUT_MS = 5000;
 let mainWindow;
-let appQuitting = false;
 
 function getMainWindow() {
   return typeof mainWindow === 'function' ? mainWindow() : mainWindow;
-}
-
-function markAppQuitting() {
-  appQuitting = true;
 }
 
 function appendOutput(projectId, type, data) {
@@ -85,6 +81,46 @@ function sanitizeLogName(name, projectId) {
 
 function getLogPath(project) {
   return path.join(getLogDirectory(), `${sanitizeLogName(project?.name, project?.id)}.txt`);
+}
+
+function getPm2Name(projectId) {
+  return `project-manager-${Number(projectId)}`;
+}
+
+function pm2Call(method, ...args) {
+  return new Promise((resolve, reject) => {
+    pm2.connect((connectError) => {
+      if (connectError) {
+        reject(connectError);
+        return;
+      }
+      pm2[method](...args, (error, result) => {
+        pm2.disconnect();
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve(result);
+      });
+    });
+  });
+}
+
+async function getPm2Process(projectId) {
+  const list = await pm2Call('list');
+  return list.find((item) => item.name === getPm2Name(projectId)) || null;
+}
+
+function pm2ProcessToRuntime(projectId, proc) {
+  const running = proc?.pm2_env?.status === 'online';
+  return {
+    projectId: Number(projectId),
+    running,
+    pid: running ? proc.pid : null,
+    startedAt: proc?.pm2_env?.pm_uptime ? new Date(proc.pm2_env.pm_uptime).toISOString() : null,
+    managed: true,
+    source: 'pm2'
+  };
 }
 
 function ensureLogDirectory() {
@@ -381,6 +417,12 @@ async function detectExternalRuntime(project, executable) {
 
 async function getRuntimeStatus(projectId) {
   const id = Number(projectId);
+  const pm2Process = await getPm2Process(id);
+  if (pm2Process) {
+    const runtime = pm2ProcessToRuntime(id, pm2Process);
+    updateProjectStatus(id, runtime.running ? 'running' : 'stopped');
+    return runtime;
+  }
   const runtime = runningProcesses.get(id);
   if (runtime) {
     return { projectId: id, running: true, pid: runtime.process.pid, startedAt: runtime.startedAt, managed: true, source: 'managed' };
@@ -492,65 +534,48 @@ async function startProject(projectId) {
     return external;
   }
 
-  const { workDir, spawnCmd, spawnArgs, needsShell } = getSpawnOptions(project, executable);
+  const { workDir, spawnCmd, spawnArgs } = getSpawnOptions(project, executable);
   ensureLogDirectory();
-
-  const child = spawn(spawnCmd, spawnArgs, {
+  const logPath = getLogPath(project);
+  const pm2Name = getPm2Name(id);
+  const currentPm2Process = await getPm2Process(id);
+  if (currentPm2Process) {
+    if (currentPm2Process.pm2_env?.status === 'online') {
+      return pm2ProcessToRuntime(id, currentPm2Process);
+    }
+    await pm2Call('restart', pm2Name);
+    return await getRuntimeStatus(id);
+  }
+  await pm2Call('start', {
+    name: pm2Name,
+    script: spawnCmd,
+    args: spawnArgs,
     cwd: workDir,
-    shell: needsShell,
-    windowsHide: false
+    interpreter: 'none',
+    autorestart: false,
+    out_file: logPath,
+    error_file: logPath,
+    merge_logs: true,
+    windowsHide: false,
+    env: {
+      PROJECT_MANAGER_PROJECT_ID: String(id)
+    }
   });
-
-  const startedAt = new Date().toISOString();
-  runningProcesses.set(id, {
-    process: child,
-    startedAt,
-    output: []
-  });
-  saveRuntimeStatus(id, { pid: child.pid, startedAt, source: 'managed' });
   updateProjectStatus(id, 'running');
-
-  child.stdout?.on('data', (chunk) => {
-    const data = chunk.toString();
-    appendProjectLog(id, 'stdout', data);
-    const output = appendOutput(id, 'stdout', data);
-    getMainWindow()?.webContents.send('terminal:output', output);
-  });
-
-  child.stderr?.on('data', (chunk) => {
-    const data = chunk.toString();
-    appendProjectLog(id, 'stderr', data);
-    const output = appendOutput(id, 'stderr', data);
-    getMainWindow()?.webContents.send('terminal:output', output);
-  });
-
-  child.on('error', (err) => {
-    runningProcesses.delete(id);
-    if (!appQuitting) {
-      updateProjectStatus(id, 'error');
-    }
-    appendProjectLog(id, 'stderr', `启动失败: ${err.message} (文件: ${executable.exec_path})\n`);
-    getMainWindow()?.webContents.send('terminal:output', {
-      projectId: id,
-      type: 'stderr',
-      data: `启动失败: ${err.message} (文件: ${executable.exec_path})`,
-      time: new Date().toISOString()
-    });
-  });
-
-  child.on('exit', (code) => {
-    runningProcesses.delete(id);
-    if (!appQuitting) {
-      updateProjectStatus(id, code === 0 ? 'stopped' : 'error');
-    }
-    appendProjectLog(id, 'system', `进程已退出，退出码: ${code}\n`);
-  });
-
   return await getRuntimeStatus(id);
+
 }
 
 async function stopProject(projectId) {
   const id = Number(projectId);
+  const pm2Process = await getPm2Process(id);
+  if (pm2Process) {
+    await pm2Call('delete', getPm2Name(id));
+    removeRuntimeStatus(id);
+    updateProjectStatus(id, 'stopped');
+    appendProjectLog(id, 'system', 'PM2 托管进程已停止\n');
+    return { projectId: id, running: false, pid: null, managed: true, source: 'pm2', stopped: true };
+  }
   const runtime = runningProcesses.get(id);
   if (!runtime) {
     const savedRuntime = getSavedRuntimeStatus(id);
@@ -661,8 +686,8 @@ function getExternalStartCommand(projectId) {
     throw new Error('项目不存在');
   }
   const executable = getExecutable(id);
-  if (!executable?.exec_path) {
-    throw new Error('请先配置执行文件');
+  if (!executable || (!executable.exec_path && !executable.args?.trim())) {
+    throw new Error('请先配置执行文件或执行命令');
   }
   const spawnInfo = getSpawnOptions(project, executable);
   const logPath = getLogPath(project);
@@ -725,6 +750,5 @@ module.exports = {
   stopLogWatch,
   getExternalStartCommand,
   appendOutput,
-  markAppQuitting,
   registerProcessManagerIpc
 };
