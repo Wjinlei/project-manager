@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
+const { initializeDatabase, closeDatabase } = require('./database');
 
 let mainWindow;
 
@@ -21,6 +22,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  initializeDatabase();
   createWindow();
 
   app.on('activate', () => {
@@ -34,6 +36,10 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
   }
+});
+
+app.on('before-quit', () => {
+  closeDatabase();
 });
 
 ipcMain.handle('app:get-version', () => app.getVersion());
