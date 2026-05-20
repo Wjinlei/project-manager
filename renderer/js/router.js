@@ -28,37 +28,8 @@ const pageDefinitions = {
   },
   projects: {
     title: '项目管理',
-    render: () => `
-      <div class="d-flex align-items-center justify-content-between mb-3">
-        <div class="bt-tabs mb-0">
-          <button class="bt-tab active">全部项目</button>
-          <button class="bt-tab">Go项目</button>
-          <button class="bt-tab">Node项目</button>
-          <button class="bt-tab">Python项目</button>
-          <button class="bt-tab">Java项目</button>
-          <button class="bt-tab">.NET项目</button>
-        </div>
-        <button class="btn btn-sm btn-bt">添加项目</button>
-      </div>
-      <div class="table-responsive">
-        <table class="table table-hover align-middle">
-          <thead>
-            <tr>
-              <th>项目名称</th>
-              <th>类型</th>
-              <th>状态</th>
-              <th>项目路径</th>
-              <th class="text-end">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td colspan="5" class="text-center text-muted py-5">暂无项目，请先添加本地目录。</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    `
+    render: () => window.projectsPage.render(),
+    mount: () => window.projectsPage.mount()
   },
   workflows: {
     title: '流程编排',
@@ -89,12 +60,15 @@ function placeholder(title, description) {
 
 window.appRouter = {
   pages: pageDefinitions,
-  navigate(pageId) {
+  async navigate(pageId) {
     const page = pageDefinitions[pageId] || pageDefinitions.dashboard;
     document.getElementById('pageTitle').textContent = page.title;
     document.getElementById('appContent').innerHTML = page.render();
     document.querySelectorAll('.nav-item').forEach((item) => {
       item.classList.toggle('active', item.dataset.page === pageId);
     });
+    if (page.mount) {
+      await page.mount();
+    }
   }
 };

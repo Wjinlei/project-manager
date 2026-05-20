@@ -221,3 +221,33 @@ body {
   border: 1px dashed #d9dee5;
   border-radius: 7px;
 }
+
+.bt-table {
+  font-size: 13px;
+}
+
+.bt-table th {
+  color: #666;
+  background: #fafafa;
+  font-weight: 600;
+}
+
+.project-path {
+  max-width: 360px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  display: inline-block;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: #b8c0cc;
+}
+
+.status-dot.running {
+  background: var(--bt-primary);
+}

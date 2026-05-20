@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const { initializeDatabase, closeDatabase } = require('./database');
+const { registerProjectManagerIpc } = require('./project-manager');
 
 let mainWindow;
 
@@ -23,6 +24,7 @@ function createWindow() {
 
 app.whenReady().then(() => {
   initializeDatabase();
+  registerProjectManagerIpc(ipcMain, () => mainWindow);
   createWindow();
 
   app.on('activate', () => {
