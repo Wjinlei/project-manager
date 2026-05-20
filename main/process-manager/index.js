@@ -210,7 +210,24 @@ function stopProject(projectId) {
     return { running: false, pid: null };
   }
 
-  runtime.process.kill();
+  try {
+    runtime.process.kill('SIGTERM');
+    setTimeout(() => {
+      if (runningProcesses.has(id)) {
+        runtime.process.kill('SIGKILL');
+        runningProcesses.delete(id);
+        updateProjectStatus(id, 'stopped');
+      }
+    }, 5000);
+  } catch (err) {
+    getMainWindow()?.webContents.send('terminal:output', {
+      projectId: id,
+      type: 'stderr',
+      data: `停止失败: ${err.message}`,
+      time: new Date().toISOString()
+    });
+  }
+
   runningProcesses.delete(id);
   updateProjectStatus(id, 'stopped');
   return { running: false, pid: null };
