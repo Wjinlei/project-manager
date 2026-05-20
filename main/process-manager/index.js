@@ -1,10 +1,14 @@
-const { spawn } = require('child_process');
+const { execFile, spawn } = require('child_process');
+const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { getRepositories } = require('../database');
 
 const runningProcesses = new Map();
 const outputBuffers = new Map();
+const logWatchers = new Map();
 const MAX_OUTPUT_LINES = 1000;
+const MAX_LOG_BYTES = 1024 * 1024;
 let mainWindow;
 
 function getMainWindow() {
@@ -21,6 +25,114 @@ function appendOutput(projectId, type, data) {
   }
   outputBuffers.set(id, buffer);
   return item;
+}
+
+function getLogDirectory() {
+  return path.join(os.homedir(), '.project-manager', 'project-log');
+}
+
+function sanitizeLogName(name, projectId) {
+  const safeName = String(name || `项目${projectId}`)
+    .replace(/[\\/:*?"<>|]/g, '_')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[. ]+$/g, '');
+  return safeName || `项目${projectId}`;
+}
+
+function getLogPath(project) {
+  return path.join(getLogDirectory(), `${sanitizeLogName(project?.name, project?.id)}.txt`);
+}
+
+function ensureLogDirectory() {
+  fs.mkdirSync(getLogDirectory(), { recursive: true });
+}
+
+function appendProjectLog(projectId, type, data) {
+  const project = getRepositories().projects.findById(Number(projectId));
+  if (!project) {
+    return;
+  }
+  ensureLogDirectory();
+  fs.appendFileSync(getLogPath(project), `[${new Date().toISOString()}] [${type}] ${data}`);
+}
+
+function readProjectLog(projectId) {
+  const project = getRepositories().projects.findById(Number(projectId));
+  if (!project) {
+    throw new Error('项目不存在');
+  }
+  const logPath = getLogPath(project);
+  if (!fs.existsSync(logPath)) {
+    return { projectId: Number(projectId), logPath, content: '', exists: false };
+  }
+  const stat = fs.statSync(logPath);
+  const start = Math.max(0, stat.size - MAX_LOG_BYTES);
+  const buffer = Buffer.alloc(stat.size - start);
+  const fd = fs.openSync(logPath, 'r');
+  fs.readSync(fd, buffer, 0, buffer.length, start);
+  fs.closeSync(fd);
+  return { projectId: Number(projectId), logPath, content: buffer.toString('utf8'), exists: true };
+}
+
+function clearProjectLog(projectId) {
+  const project = getRepositories().projects.findById(Number(projectId));
+  if (!project) {
+    throw new Error('项目不存在');
+  }
+  ensureLogDirectory();
+  fs.writeFileSync(getLogPath(project), '');
+  outputBuffers.set(Number(projectId), []);
+  return true;
+}
+
+function stopLogWatch(projectId) {
+  const id = Number(projectId);
+  const watcher = logWatchers.get(id);
+  if (watcher) {
+    watcher.close();
+    logWatchers.delete(id);
+  }
+}
+
+function watchProjectLog(projectId) {
+  const id = Number(projectId);
+  stopLogWatch(id);
+  const project = getRepositories().projects.findById(id);
+  if (!project) {
+    throw new Error('项目不存在');
+  }
+  ensureLogDirectory();
+  const logPath = getLogPath(project);
+  if (!fs.existsSync(logPath)) {
+    fs.writeFileSync(logPath, '');
+  }
+  let position = fs.statSync(logPath).size;
+  const watcher = fs.watch(logPath, () => {
+    try {
+      const stat = fs.statSync(logPath);
+      if (stat.size < position) {
+        position = 0;
+      }
+      if (stat.size === position) {
+        return;
+      }
+      const buffer = Buffer.alloc(stat.size - position);
+      const fd = fs.openSync(logPath, 'r');
+      fs.readSync(fd, buffer, 0, buffer.length, position);
+      fs.closeSync(fd);
+      position = stat.size;
+      getMainWindow()?.webContents.send('terminal:log-output', {
+        projectId: id,
+        data: buffer.toString('utf8'),
+        time: new Date().toISOString()
+      });
+    } catch (_err) {
+      stopLogWatch(id);
+    }
+  });
+  logWatchers.set(id, watcher);
+  return { projectId: id, logPath };
 }
 
 function parseArgs(args) {
@@ -53,42 +165,7 @@ function saveExecutable(projectId, payload) {
   return repositories.projectExecutables.create(data);
 }
 
-function getRuntimeStatus(projectId) {
-  const runtime = runningProcesses.get(Number(projectId));
-  if (!runtime) {
-    return { running: false, pid: null };
-  }
-  return { running: true, pid: runtime.process.pid, startedAt: runtime.startedAt };
-}
-
-function updateProjectStatus(projectId, status) {
-  const repositories = getRepositories();
-  const project = repositories.projects.findById(Number(projectId));
-  if (project) {
-    repositories.projects.update(project.id, {
-      status,
-      updated_at: new Date().toISOString()
-    });
-  }
-}
-
-function startProject(projectId) {
-  const id = Number(projectId);
-  if (runningProcesses.has(id)) {
-    return getRuntimeStatus(id);
-  }
-
-  const repositories = getRepositories();
-  const project = repositories.projects.findById(id);
-  if (!project) {
-    throw new Error('项目不存在');
-  }
-
-  const executable = getExecutable(id);
-  if (!executable || !executable.exec_path) {
-    throw new Error('请先配置执行文件');
-  }
-
+function getSpawnOptions(project, executable) {
   const workDir = executable.work_dir || project.path || path.dirname(executable.exec_path);
   const projectType = (project.type || '').toLowerCase();
   const ext = path.extname(executable.exec_path).toLowerCase();
@@ -160,6 +237,139 @@ function startProject(projectId) {
       }
   }
 
+  return { workDir, spawnCmd, spawnArgs, needsShell };
+}
+
+async function getWindowsProcesses() {
+  return new Promise((resolve) => {
+    execFile('powershell.exe', [
+      '-NoProfile',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-Command',
+      'Get-CimInstance Win32_Process | Select-Object ProcessId,ExecutablePath,CommandLine | ConvertTo-Json -Compress'
+    ], { windowsHide: true, maxBuffer: 1024 * 1024 * 20 }, (error, stdout) => {
+      if (error || !stdout.trim()) {
+        resolve([]);
+        return;
+      }
+      try {
+        const parsed = JSON.parse(stdout);
+        resolve(Array.isArray(parsed) ? parsed : [parsed]);
+      } catch (_err) {
+        resolve([]);
+      }
+    });
+  });
+}
+
+function normalizeText(value) {
+  return String(value || '').replaceAll('\\', '/').toLowerCase();
+}
+
+function processMatchesProject(proc, project, executable, spawnInfo) {
+  const commandLine = normalizeText(proc.CommandLine);
+  const executablePath = normalizeText(proc.ExecutablePath);
+  const execPath = normalizeText(executable.exec_path);
+  const projectPath = normalizeText(project.path);
+  const workDir = normalizeText(spawnInfo.workDir);
+  const spawnCmd = normalizeText(spawnInfo.spawnCmd);
+  const args = parseArgs(executable.args).map(normalizeText).filter(Boolean);
+
+  if (!commandLine && !executablePath) {
+    return false;
+  }
+
+  const hasExecPath = execPath && (commandLine.includes(execPath) || executablePath === execPath);
+  const hasProjectPath = projectPath && commandLine.includes(projectPath);
+  const hasWorkDir = workDir && commandLine.includes(workDir);
+  const hasSpawnCommand = spawnCmd && (commandLine.includes(spawnCmd) || executablePath.endsWith(`/${spawnCmd}.exe`) || executablePath.endsWith(`/${spawnCmd}`));
+  const argsMatched = args.length === 0 || args.every((arg) => commandLine.includes(arg));
+
+  if (hasExecPath && argsMatched) {
+    return true;
+  }
+  if ((hasProjectPath || hasWorkDir) && hasSpawnCommand && argsMatched) {
+    return true;
+  }
+  return false;
+}
+
+async function detectExternalRuntime(project, executable) {
+  if (!project || !executable?.exec_path) {
+    return null;
+  }
+  const spawnInfo = getSpawnOptions(project, executable);
+  const processes = await getWindowsProcesses();
+  const currentPid = process.pid;
+  const match = processes.find((proc) => Number(proc.ProcessId) !== currentPid && processMatchesProject(proc, project, executable, spawnInfo));
+  if (!match) {
+    return null;
+  }
+  return {
+    projectId: project.id,
+    running: true,
+    pid: Number(match.ProcessId),
+    startedAt: null,
+    managed: false,
+    source: 'external'
+  };
+}
+
+async function getRuntimeStatus(projectId) {
+  const id = Number(projectId);
+  const runtime = runningProcesses.get(id);
+  if (runtime) {
+    return { projectId: id, running: true, pid: runtime.process.pid, startedAt: runtime.startedAt, managed: true, source: 'managed' };
+  }
+  const repositories = getRepositories();
+  const project = repositories.projects.findById(id);
+  const executable = getExecutable(id);
+  const external = await detectExternalRuntime(project, executable);
+  if (external) {
+    updateProjectStatus(id, 'running');
+    return external;
+  }
+  updateProjectStatus(id, 'stopped');
+  return { projectId: id, running: false, pid: null, managed: false, source: 'none' };
+}
+
+function updateProjectStatus(projectId, status) {
+  const repositories = getRepositories();
+  const project = repositories.projects.findById(Number(projectId));
+  if (project) {
+    repositories.projects.update(project.id, {
+      status,
+      updated_at: new Date().toISOString()
+    });
+  }
+}
+
+async function startProject(projectId) {
+  const id = Number(projectId);
+  if (runningProcesses.has(id)) {
+    return await getRuntimeStatus(id);
+  }
+
+  const repositories = getRepositories();
+  const project = repositories.projects.findById(id);
+  if (!project) {
+    throw new Error('项目不存在');
+  }
+
+  const executable = getExecutable(id);
+  if (!executable || !executable.exec_path) {
+    throw new Error('请先配置执行文件');
+  }
+
+  const external = await detectExternalRuntime(project, executable);
+  if (external) {
+    return external;
+  }
+
+  const { workDir, spawnCmd, spawnArgs, needsShell } = getSpawnOptions(project, executable);
+  ensureLogDirectory();
+
   const child = spawn(spawnCmd, spawnArgs, {
     cwd: workDir,
     shell: needsShell,
@@ -174,18 +384,23 @@ function startProject(projectId) {
   updateProjectStatus(id, 'running');
 
   child.stdout?.on('data', (chunk) => {
-    const output = appendOutput(id, 'stdout', chunk.toString());
+    const data = chunk.toString();
+    appendProjectLog(id, 'stdout', data);
+    const output = appendOutput(id, 'stdout', data);
     getMainWindow()?.webContents.send('terminal:output', output);
   });
 
   child.stderr?.on('data', (chunk) => {
-    const output = appendOutput(id, 'stderr', chunk.toString());
+    const data = chunk.toString();
+    appendProjectLog(id, 'stderr', data);
+    const output = appendOutput(id, 'stderr', data);
     getMainWindow()?.webContents.send('terminal:output', output);
   });
 
   child.on('error', (err) => {
     runningProcesses.delete(id);
     updateProjectStatus(id, 'error');
+    appendProjectLog(id, 'stderr', `启动失败: ${err.message} (文件: ${executable.exec_path})\n`);
     getMainWindow()?.webContents.send('terminal:output', {
       projectId: id,
       type: 'stderr',
@@ -197,17 +412,22 @@ function startProject(projectId) {
   child.on('exit', (code) => {
     runningProcesses.delete(id);
     updateProjectStatus(id, code === 0 ? 'stopped' : 'error');
+    appendProjectLog(id, 'system', `进程已退出，退出码: ${code}\n`);
   });
 
-  return getRuntimeStatus(id);
+  return await getRuntimeStatus(id);
 }
 
-function stopProject(projectId) {
+async function stopProject(projectId) {
   const id = Number(projectId);
   const runtime = runningProcesses.get(id);
   if (!runtime) {
+    const status = await getRuntimeStatus(id);
+    if (status.running && !status.managed) {
+      return status;
+    }
     updateProjectStatus(id, 'stopped');
-    return { running: false, pid: null };
+    return { projectId: id, running: false, pid: null, managed: false, source: 'none' };
   }
 
   try {
@@ -230,21 +450,25 @@ function stopProject(projectId) {
 
   runningProcesses.delete(id);
   updateProjectStatus(id, 'stopped');
-  return { running: false, pid: null };
+  return { projectId: id, running: false, pid: null, managed: false, source: 'none' };
 }
 
-function restartProject(projectId) {
-  stopProject(projectId);
-  return startProject(projectId);
+async function restartProject(projectId) {
+  await stopProject(projectId);
+  return await startProject(projectId);
 }
 
-function listRuntimeStatuses() {
-  return Array.from(runningProcesses.entries()).map(([projectId, runtime]) => ({
-    projectId,
-    pid: runtime.process.pid,
-    startedAt: runtime.startedAt,
-    running: true
-  }));
+async function listRuntimeStatuses() {
+  const repositories = getRepositories();
+  const projects = repositories.projects.findAll();
+  const statuses = [];
+  for (const project of projects) {
+    const status = await getRuntimeStatus(project.id);
+    if (status.running) {
+      statuses.push(status);
+    }
+  }
+  return statuses;
 }
 
 function getOutputHistory(projectId) {
@@ -254,6 +478,33 @@ function getOutputHistory(projectId) {
 function clearOutput(projectId) {
   outputBuffers.set(Number(projectId), []);
   return true;
+}
+
+function quotePowerShell(value) {
+  return `'${String(value).replaceAll("'", "''")}'`;
+}
+
+function getExternalStartCommand(projectId) {
+  const id = Number(projectId);
+  const repositories = getRepositories();
+  const project = repositories.projects.findById(id);
+  if (!project) {
+    throw new Error('项目不存在');
+  }
+  const executable = getExecutable(id);
+  if (!executable?.exec_path) {
+    throw new Error('请先配置执行文件');
+  }
+  const spawnInfo = getSpawnOptions(project, executable);
+  const logPath = getLogPath(project);
+  const command = [spawnInfo.spawnCmd, ...spawnInfo.spawnArgs].map(quotePowerShell).join(' ');
+  const workDir = quotePowerShell(spawnInfo.workDir);
+  const quotedLogPath = quotePowerShell(logPath);
+  return {
+    projectId: id,
+    logPath,
+    command: `New-Item -ItemType Directory -Force -Path ${quotePowerShell(getLogDirectory())} | Out-Null; Set-Location ${workDir}; & ${command} *>> ${quotedLogPath}`
+  };
 }
 
 async function selectExecutable(browserWindow) {
@@ -281,6 +532,11 @@ function registerProcessManagerIpc(ipcMain, getMainWindow) {
   ipcMain.handle('process:select-executable', () => selectExecutable(getMainWindow()));
   ipcMain.handle('terminal:get-history', (_event, projectId) => getOutputHistory(projectId));
   ipcMain.handle('terminal:clear', (_event, projectId) => clearOutput(projectId));
+  ipcMain.handle('terminal:get-log', (_event, projectId) => readProjectLog(projectId));
+  ipcMain.handle('terminal:clear-log', (_event, projectId) => clearProjectLog(projectId));
+  ipcMain.handle('terminal:watch-log', (_event, projectId) => watchProjectLog(projectId));
+  ipcMain.handle('terminal:unwatch-log', (_event, projectId) => stopLogWatch(projectId));
+  ipcMain.handle('terminal:get-start-command', (_event, projectId) => getExternalStartCommand(projectId));
 }
 
 module.exports = {
@@ -294,6 +550,11 @@ module.exports = {
   listRuntimeStatuses,
   getOutputHistory,
   clearOutput,
+  readProjectLog,
+  clearProjectLog,
+  watchProjectLog,
+  stopLogWatch,
+  getExternalStartCommand,
   appendOutput,
   registerProcessManagerIpc
 };

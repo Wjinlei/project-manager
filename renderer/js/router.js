@@ -29,7 +29,8 @@ const pageDefinitions = {
   projects: {
     title: '项目管理',
     render: () => window.projectsPage.render(),
-    mount: () => window.projectsPage.mount()
+    mount: () => window.projectsPage.mount(),
+    unmount: () => window.projectsPage.unmount()
   },
   workflows: {
     title: '流程编排',
@@ -40,11 +41,6 @@ const pageDefinitions = {
   scheduler: {
     title: '计划任务',
     render: () => placeholder('计划任务', '后续将支持 Cron 和简单周期任务。')
-  },
-  terminal: {
-    title: '终端',
-    render: () => window.terminalPage.render(),
-    mount: () => window.terminalPage.mount()
   },
   git: {
     title: 'Git',

@@ -9,7 +9,12 @@ let projectsState = {
   executableProjectId: null,
   configProjectId: null,
   editingConfigId: null,
-  configs: []
+  configs: [],
+  terminalProjectId: null,
+  terminal: null,
+  fitAddon: null,
+  terminalUnsubscribe: null,
+  logUnsubscribe: null
 };
 
 function escapeHtml(value) {
@@ -67,6 +72,7 @@ function renderProjectRows() {
     const runtime = runtimeOf(project.id);
     const isRunning = Boolean(runtime?.running);
     const status = isRunning ? 'running' : project.status;
+    const sourceText = runtime?.source === 'external' ? '外部' : runtime?.source === 'managed' ? '托管' : '';
     return `
       <tr>
         <td>
@@ -74,7 +80,7 @@ function renderProjectRows() {
           <div class="text-muted small">${escapeHtml(project.remark || '无备注')}</div>
         </td>
         <td><span class="badge ${typeClass(project.type)}">${escapeHtml(project.type)}</span></td>
-        <td><span class="status-dot ${status === 'running' ? 'running' : status === 'error' ? 'error' : ''}"></span>${escapeHtml(status)}</td>
+        <td><span class="status-dot ${status === 'running' ? 'running' : status === 'error' ? 'error' : ''}"></span>${escapeHtml(status)}${sourceText ? `<span class="badge text-bg-light ms-1">${sourceText}</span>` : ''}</td>
         <td>${runtime?.pid || '-'}</td>
         <td class="project-path" title="${escapeHtml(project.path)}">${escapeHtml(project.path)}</td>
         <td>${escapeHtml(project.updated_at || project.created_at || '')}</td>
@@ -82,6 +88,7 @@ function renderProjectRows() {
           <button class="btn btn-sm btn-outline-success" data-action="start" data-id="${project.id}" ${isRunning ? 'disabled' : ''}>启动</button>
           <button class="btn btn-sm btn-outline-warning" data-action="stop" data-id="${project.id}" ${isRunning ? '' : 'disabled'}>停止</button>
           <button class="btn btn-sm btn-outline-primary" data-action="restart" data-id="${project.id}">重启</button>
+          <button class="btn btn-sm btn-outline-dark" data-action="terminal" data-id="${project.id}">终端</button>
           <button class="btn btn-sm btn-outline-secondary" data-action="executable" data-id="${project.id}">执行文件</button>
           <button class="btn btn-sm btn-outline-secondary" data-action="configs" data-id="${project.id}">配置</button>
           <button class="btn btn-sm btn-outline-secondary" data-action="edit" data-id="${project.id}">设置</button>
@@ -149,6 +156,26 @@ function renderProjectsPage() {
       </div>
     </div>
 
+    <div class="modal fade" id="terminalModal" tabindex="-1">
+      <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header"><h5 class="modal-title" id="terminalModalTitle">项目终端</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+          <div class="modal-body">
+            <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
+              <div class="small text-muted" id="terminalLogPath"></div>
+              <div class="text-nowrap">
+                <button class="btn btn-sm btn-outline-secondary" id="copyStartCommandBtn">复制启动命令</button>
+                <button class="btn btn-sm btn-outline-secondary" id="refreshTerminalBtn">刷新</button>
+                <button class="btn btn-sm btn-outline-danger" id="clearProjectLogBtn">清屏</button>
+              </div>
+            </div>
+            <div class="terminal-container terminal-container-modal" id="projectTerminalContainer"></div>
+            <textarea class="form-control form-control-sm mt-2 d-none" id="startCommandOutput" rows="3" readonly></textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="modal fade" id="configModal" tabindex="-1">
       <div class="modal-dialog modal-xl">
         <div class="modal-content">
@@ -206,6 +233,77 @@ async function openExecutableModal(projectId) {
   document.getElementById('execArgsInput').value = executable?.args || '';
   document.getElementById('execWorkDirInput').value = executable?.work_dir || project?.path || '';
   bootstrap.Modal.getOrCreateInstance(document.getElementById('executableModal')).show();
+}
+
+function writeTerminalText(data) {
+  if (!projectsState.terminal || !data) {
+    return;
+  }
+  projectsState.terminal.write(String(data).replaceAll('\n', '\r\n'));
+}
+
+function disposeProjectTerminal() {
+  if (projectsState.terminalUnsubscribe) {
+    projectsState.terminalUnsubscribe();
+    projectsState.terminalUnsubscribe = null;
+  }
+  if (projectsState.logUnsubscribe) {
+    projectsState.logUnsubscribe();
+    projectsState.logUnsubscribe = null;
+  }
+  if (projectsState.terminalProjectId) {
+    window.projectManager.terminal.unwatchLog(projectsState.terminalProjectId);
+  }
+  projectsState.terminal?.dispose();
+  projectsState.terminal = null;
+  projectsState.fitAddon = null;
+  projectsState.terminalProjectId = null;
+}
+
+async function loadProjectLog(projectId) {
+  const log = await window.projectManager.terminal.getLog(projectId);
+  document.getElementById('terminalLogPath').textContent = log.logPath;
+  projectsState.terminal.clear();
+  if (log.content) {
+    writeTerminalText(log.content);
+  } else {
+    writeTerminalText(`日志文件暂无内容：${log.logPath}\n`);
+  }
+}
+
+async function openTerminalModal(projectId) {
+  disposeProjectTerminal();
+  projectsState.terminalProjectId = projectId;
+  const project = projectsState.projects.find((item) => item.id === projectId);
+  document.getElementById('terminalModalTitle').textContent = `项目终端 - ${project?.name || projectId}`;
+  const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('terminalModal'));
+  modal.show();
+  projectsState.terminal = new Terminal({
+    cursorBlink: true,
+    convertEol: true,
+    fontFamily: 'Consolas, "Courier New", monospace',
+    fontSize: 13,
+    theme: {
+      background: '#111827',
+      foreground: '#e5e7eb'
+    }
+  });
+  projectsState.fitAddon = new FitAddon.FitAddon();
+  projectsState.terminal.loadAddon(projectsState.fitAddon);
+  projectsState.terminal.open(document.getElementById('projectTerminalContainer'));
+  projectsState.fitAddon.fit();
+  await loadProjectLog(projectId);
+  await window.projectManager.terminal.watchLog(projectId);
+  projectsState.logUnsubscribe = window.projectManager.terminal.onLogOutput((output) => {
+    if (output.projectId === projectsState.terminalProjectId) {
+      writeTerminalText(output.data);
+    }
+  });
+  projectsState.terminalUnsubscribe = window.projectManager.terminal.onOutput((output) => {
+    if (output.projectId === projectsState.terminalProjectId) {
+      refreshTable();
+    }
+  });
 }
 
 function renderConfigRows() {
@@ -292,6 +390,29 @@ async function previewConfig(configId) {
   preview.classList.remove('d-none');
 }
 
+async function copyStartCommand() {
+  if (!projectsState.terminalProjectId) {
+    return;
+  }
+  try {
+    const result = await window.projectManager.terminal.getStartCommand(projectsState.terminalProjectId);
+    const output = document.getElementById('startCommandOutput');
+    output.value = result.command;
+    output.classList.remove('d-none');
+    await navigator.clipboard.writeText(result.command);
+  } catch (error) {
+    alert(error.message || '获取启动命令失败');
+  }
+}
+
+async function clearProjectLog() {
+  if (!projectsState.terminalProjectId) {
+    return;
+  }
+  await window.projectManager.terminal.clearLog(projectsState.terminalProjectId);
+  projectsState.terminal?.clear();
+}
+
 async function saveProject() {
   const payload = { path: document.getElementById('projectPathInput').value.trim(), name: document.getElementById('projectNameInput').value.trim(), type: document.getElementById('projectTypeInput').value, remark: document.getElementById('projectRemarkInput').value.trim() };
   if (!payload.path || !payload.name) { alert('请填写项目目录和项目名称'); return; }
@@ -340,6 +461,10 @@ function bindProjectsEvents() {
   document.getElementById('addProjectBtn').addEventListener('click', () => openProjectModal());
   document.getElementById('saveProjectBtn').addEventListener('click', saveProject);
   document.getElementById('saveExecutableBtn').addEventListener('click', saveExecutable);
+  document.getElementById('terminalModal').addEventListener('hidden.bs.modal', disposeProjectTerminal);
+  document.getElementById('copyStartCommandBtn').addEventListener('click', copyStartCommand);
+  document.getElementById('refreshTerminalBtn').addEventListener('click', () => projectsState.terminalProjectId && loadProjectLog(projectsState.terminalProjectId));
+  document.getElementById('clearProjectLogBtn').addEventListener('click', clearProjectLog);
   document.getElementById('addConfigBtn').addEventListener('click', () => openConfigForm());
   document.getElementById('saveConfigBtn').addEventListener('click', saveConfig);
   document.getElementById('cancelConfigBtn').addEventListener('click', () => document.getElementById('configFormPanel').classList.add('d-none'));
@@ -357,6 +482,7 @@ function bindProjectsEvents() {
     if (button.dataset.action === 'delete') await deleteProject(id);
     if (button.dataset.action === 'executable') await openExecutableModal(id);
     if (button.dataset.action === 'configs') await openConfigModal(id);
+    if (button.dataset.action === 'terminal') await openTerminalModal(id);
     if (['start', 'stop', 'restart'].includes(button.dataset.action)) await runProjectAction(button.dataset.action, id);
   });
   document.getElementById('configTableBody').addEventListener('click', async (event) => {
@@ -381,5 +507,8 @@ window.projectsPage = {
   async mount() {
     bindProjectsEvents();
     await loadProjects();
+  },
+  unmount() {
+    disposeProjectTerminal();
   }
 };

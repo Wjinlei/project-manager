@@ -25,10 +25,20 @@ contextBridge.exposeInMainWorld('projectManager', {
   terminal: {
     getHistory: (projectId) => ipcRenderer.invoke('terminal:get-history', projectId),
     clear: (projectId) => ipcRenderer.invoke('terminal:clear', projectId),
+    getLog: (projectId) => ipcRenderer.invoke('terminal:get-log', projectId),
+    clearLog: (projectId) => ipcRenderer.invoke('terminal:clear-log', projectId),
+    watchLog: (projectId) => ipcRenderer.invoke('terminal:watch-log', projectId),
+    unwatchLog: (projectId) => ipcRenderer.invoke('terminal:unwatch-log', projectId),
+    getStartCommand: (projectId) => ipcRenderer.invoke('terminal:get-start-command', projectId),
     onOutput: (callback) => {
       const listener = (_event, output) => callback(output);
       ipcRenderer.on('terminal:output', listener);
       return () => ipcRenderer.removeListener('terminal:output', listener);
+    },
+    onLogOutput: (callback) => {
+      const listener = (_event, output) => callback(output);
+      ipcRenderer.on('terminal:log-output', listener);
+      return () => ipcRenderer.removeListener('terminal:log-output', listener);
     }
   },
   configs: {

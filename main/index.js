@@ -56,6 +56,5 @@ ipcMain.handle('navigation:get-pages', () => [
   { id: 'projects', title: '项目管理' },
   { id: 'workflows', title: '流程编排' },
   { id: 'scheduler', title: '计划任务' },
-  { id: 'terminal', title: '终端' },
   { id: 'git', title: 'Git' }
 ]);
