@@ -58,6 +58,17 @@ function actionText(action, fallback) {
   return map[action] || fallback;
 }
 
+function formatLocalTime(value) {
+  if (!value) {
+    return '';
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return date.toLocaleString();
+}
+
 function getFilteredProjects() {
   return projectsState.projects.filter((project) => {
     const typeMatched = projectsState.activeType === '全部' || project.type === projectsState.activeType;
@@ -91,17 +102,18 @@ function renderProjectRows() {
     const operatingAction = isOperating ? projectsState.operatingAction : null;
     const operatingText = actionText(operatingAction, '处理中...');
     const statusClass = status === 'running' ? 'running' : status === 'error' ? 'error' : 'stopped';
+    const updatedAt = formatLocalTime(project.updated_at || project.created_at || '');
     return `
       <tr>
-        <td>
-          <div class="fw-semibold">${escapeHtml(project.name)}</div>
-          <div class="text-muted small">${escapeHtml(project.remark || '无备注')}</div>
+        <td class="project-cell project-name-cell" title="${escapeHtml(`${project.name}${project.remark ? `\n${project.remark}` : ''}`)}">
+          <div class="fw-semibold text-ellipsis">${escapeHtml(project.name)}</div>
+          <div class="text-muted small text-ellipsis">${escapeHtml(project.remark || '无备注')}</div>
         </td>
-        <td><span class="badge ${typeClass(project.type)}">${escapeHtml(project.type)}</span></td>
-        <td><span class="status-dot ${statusClass}"></span><span class="status-text ${statusClass}">${escapeHtml(status)}</span>${sourceText ? `<span class="badge text-bg-light ms-1">${sourceText}</span>` : ''}</td>
-        <td>${runtime?.pid || '-'}</td>
+        <td class="project-cell" title="${escapeHtml(project.type)}"><span class="badge ${typeClass(project.type)}">${escapeHtml(project.type)}</span></td>
+        <td class="project-cell" title="${escapeHtml(status)}"><span class="status-dot ${statusClass}"></span><span class="status-text ${statusClass}">${escapeHtml(status)}</span>${sourceText ? `<span class="badge text-bg-light ms-1">${sourceText}</span>` : ''}</td>
+        <td class="project-cell" title="${escapeHtml(runtime?.pid || '-')}">${runtime?.pid || '-'}</td>
         <td class="project-path" title="${escapeHtml(project.path)}">${escapeHtml(project.path)}</td>
-        <td>${escapeHtml(project.updated_at || project.created_at || '')}</td>
+        <td class="project-cell" title="${escapeHtml(updatedAt)}">${escapeHtml(updatedAt)}</td>
         <td class="text-end text-nowrap">
           <button class="btn btn-sm btn-outline-success" data-action="start" data-id="${project.id}" ${isRunning || isOperating ? 'disabled' : ''}>${isOperating ? operatingText : '启动'}</button>
           <button class="btn btn-sm btn-outline-warning" data-action="stop" data-id="${project.id}" ${(!isRunning && !isOperating) || isOperating ? 'disabled' : ''}>${isOperating ? operatingText : '停止'}</button>
@@ -126,17 +138,17 @@ function renderProjectsPage() {
       <input class="form-control form-control-sm" id="projectSearchInput" type="search" placeholder="搜索项目名称、路径、类型或备注" value="${escapeHtml(projectsState.keyword)}">
       <span class="text-muted small">共 ${projectsState.projects.length} 个项目</span>
     </div>
-    <div class="table-responsive">
-      <table class="table table-hover align-middle bt-table">
+    <div class="table-responsive project-table-wrap">
+      <table class="table table-hover align-middle bt-table project-table">
         <thead>
           <tr>
-            <th>项目名称</th>
-            <th>类型</th>
-            <th>状态</th>
-            <th>PID</th>
-            <th>项目路径</th>
-            <th>更新时间</th>
-            <th class="text-end">操作</th>
+            <th class="col-name">项目名称</th>
+            <th class="col-type">类型</th>
+            <th class="col-status">状态</th>
+            <th class="col-pid">PID</th>
+            <th class="col-path">项目路径</th>
+            <th class="col-time">更新时间</th>
+            <th class="col-actions text-end">操作</th>
           </tr>
         </thead>
         <tbody id="projectTableBody">${renderProjectRows()}</tbody>

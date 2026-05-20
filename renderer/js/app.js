@@ -1,4 +1,8 @@
 window.addEventListener('DOMContentLoaded', async () => {
+  document.getElementById('sidebarToggle').addEventListener('click', () => {
+    document.querySelector('.app-shell').classList.toggle('sidebar-collapsed');
+  });
+
   document.querySelectorAll('.nav-item').forEach((item) => {
     item.addEventListener('click', () => {
       window.appRouter.navigate(item.dataset.page);
