@@ -48,7 +48,7 @@ body {
 
 .sidebar-collapsed .sidebar-brand {
   justify-content: center;
-  padding: 0;
+  padding: 0 8px;
 }
 
 .sidebar-collapsed .nav-item {
@@ -67,6 +67,15 @@ body {
   gap: 10px;
   padding: 0 18px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sidebar-brand .sidebar-toggle {
+  margin-left: auto;
+}
+
+.sidebar-collapsed .sidebar-toggle {
+  margin-left: 0;
+  transform: rotate(180deg);
 }
 
 .brand-icon {
@@ -149,12 +158,13 @@ body {
 }
 
 .sidebar-toggle {
-  width: 30px;
-  height: 30px;
-  border: 1px solid var(--bt-border);
+  width: 24px;
+  height: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 5px;
-  color: #555;
-  background: #fff;
+  color: #d7dde5;
+  background: rgba(255, 255, 255, 0.08);
+  line-height: 1;
 }
 
 .page-title {
