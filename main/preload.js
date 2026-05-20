@@ -30,5 +30,15 @@ contextBridge.exposeInMainWorld('projectManager', {
       ipcRenderer.on('terminal:output', listener);
       return () => ipcRenderer.removeListener('terminal:output', listener);
     }
+  },
+  configs: {
+    list: (projectId) => ipcRenderer.invoke('configs:list', projectId),
+    create: (projectId, payload) => ipcRenderer.invoke('configs:create', projectId, payload),
+    update: (configId, payload) => ipcRenderer.invoke('configs:update', configId, payload),
+    delete: (configId) => ipcRenderer.invoke('configs:delete', configId),
+    preview: (configId) => ipcRenderer.invoke('configs:preview', configId),
+    switch: (configId) => ipcRenderer.invoke('configs:switch', configId),
+    listBackups: (configId) => ipcRenderer.invoke('configs:list-backups', configId),
+    selectFile: () => ipcRenderer.invoke('configs:select-file')
   }
 });

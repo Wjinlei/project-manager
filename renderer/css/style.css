@@ -272,3 +272,12 @@ body {
   border-radius: 7px;
   overflow: hidden;
 }
+
+.config-preview {
+  max-height: 260px;
+  overflow: auto;
+  color: #e5e7eb;
+  background: #111827;
+  border-radius: 7px;
+  padding: 12px;
+}

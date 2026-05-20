@@ -6,7 +6,10 @@ let projectsState = {
   activeType: '全部',
   keyword: '',
   editingId: null,
-  executableProjectId: null
+  executableProjectId: null,
+  configProjectId: null,
+  editingConfigId: null,
+  configs: []
 };
 
 function escapeHtml(value) {
@@ -80,6 +83,7 @@ function renderProjectRows() {
           <button class="btn btn-sm btn-outline-warning" data-action="stop" data-id="${project.id}" ${isRunning ? '' : 'disabled'}>停止</button>
           <button class="btn btn-sm btn-outline-primary" data-action="restart" data-id="${project.id}">重启</button>
           <button class="btn btn-sm btn-outline-secondary" data-action="executable" data-id="${project.id}">执行文件</button>
+          <button class="btn btn-sm btn-outline-secondary" data-action="configs" data-id="${project.id}">配置</button>
           <button class="btn btn-sm btn-outline-secondary" data-action="edit" data-id="${project.id}">设置</button>
           <button class="btn btn-sm btn-outline-danger" data-action="delete" data-id="${project.id}">删除</button>
         </td>
@@ -144,6 +148,32 @@ function renderProjectsPage() {
         </div>
       </div>
     </div>
+
+    <div class="modal fade" id="configModal" tabindex="-1">
+      <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+          <div class="modal-header"><h5 class="modal-title">配置文件管理</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+          <div class="modal-body">
+            <div class="d-flex justify-content-between mb-3"><span class="text-muted small">通过复制覆盖方式切换配置文件，切换前会自动备份目标文件。</span><button class="btn btn-sm btn-bt" id="addConfigBtn">添加配置</button></div>
+            <div class="table-responsive">
+              <table class="table table-hover align-middle bt-table">
+                <thead><tr><th>名称</th><th>源文件</th><th>目标文件</th><th>状态</th><th class="text-end">操作</th></tr></thead>
+                <tbody id="configTableBody"></tbody>
+              </table>
+            </div>
+            <div class="border rounded p-3 mt-3 d-none" id="configFormPanel">
+              <div class="row g-3">
+                <div class="col-md-4"><label class="form-label">配置名称</label><input class="form-control form-control-sm" id="configNameInput"></div>
+                <div class="col-md-4"><label class="form-label">源文件</label><div class="input-group input-group-sm"><input class="form-control" id="configSourceInput"><button class="btn btn-outline-secondary" id="selectConfigSourceBtn">选择</button></div></div>
+                <div class="col-md-4"><label class="form-label">目标文件</label><div class="input-group input-group-sm"><input class="form-control" id="configTargetInput"><button class="btn btn-outline-secondary" id="selectConfigTargetBtn">选择</button></div></div>
+              </div>
+              <div class="mt-3 text-end"><button class="btn btn-sm btn-secondary" id="cancelConfigBtn">取消</button><button class="btn btn-sm btn-bt" id="saveConfigBtn">保存</button></div>
+            </div>
+            <pre class="config-preview d-none mt-3" id="configPreview"></pre>
+          </div>
+        </div>
+      </div>
+    </div>
   `;
 }
 
@@ -176,6 +206,90 @@ async function openExecutableModal(projectId) {
   document.getElementById('execArgsInput').value = executable?.args || '';
   document.getElementById('execWorkDirInput').value = executable?.work_dir || project?.path || '';
   bootstrap.Modal.getOrCreateInstance(document.getElementById('executableModal')).show();
+}
+
+function renderConfigRows() {
+  if (projectsState.configs.length === 0) {
+    return '<tr><td colspan="5" class="text-center text-muted py-4">暂无配置，请添加配置文件映射。</td></tr>';
+  }
+  return projectsState.configs.map((config) => `
+    <tr class="${config.is_active ? 'table-success' : ''}">
+      <td>${escapeHtml(config.name)}</td>
+      <td class="project-path" title="${escapeHtml(config.source_path)}">${escapeHtml(config.source_path)}</td>
+      <td class="project-path" title="${escapeHtml(config.target_path)}">${escapeHtml(config.target_path)}</td>
+      <td>${config.is_active ? '<span class="badge text-bg-success">当前激活</span>' : '<span class="badge text-bg-secondary">未激活</span>'}</td>
+      <td class="text-end text-nowrap">
+        <button class="btn btn-sm btn-outline-success" data-config-action="switch" data-id="${config.id}">切换</button>
+        <button class="btn btn-sm btn-outline-info" data-config-action="preview" data-id="${config.id}">预览</button>
+        <button class="btn btn-sm btn-outline-secondary" data-config-action="edit" data-id="${config.id}">编辑</button>
+        <button class="btn btn-sm btn-outline-danger" data-config-action="delete" data-id="${config.id}">删除</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+async function loadConfigs(projectId) {
+  projectsState.configProjectId = projectId;
+  projectsState.configs = await window.projectManager.configs.list(projectId);
+  document.getElementById('configTableBody').innerHTML = renderConfigRows();
+}
+
+async function openConfigModal(projectId) {
+  await loadConfigs(projectId);
+  document.getElementById('configFormPanel').classList.add('d-none');
+  document.getElementById('configPreview').classList.add('d-none');
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('configModal')).show();
+}
+
+function openConfigForm(config) {
+  projectsState.editingConfigId = config?.id || null;
+  document.getElementById('configNameInput').value = config?.name || '';
+  document.getElementById('configSourceInput').value = config?.source_path || '';
+  document.getElementById('configTargetInput').value = config?.target_path || '';
+  document.getElementById('configFormPanel').classList.remove('d-none');
+}
+
+async function saveConfig() {
+  const payload = {
+    name: document.getElementById('configNameInput').value.trim(),
+    source_path: document.getElementById('configSourceInput').value.trim(),
+    target_path: document.getElementById('configTargetInput').value.trim()
+  };
+  if (!payload.name || !payload.source_path || !payload.target_path) {
+    alert('请填写配置名称、源文件和目标文件');
+    return;
+  }
+  if (projectsState.editingConfigId) {
+    await window.projectManager.configs.update(projectsState.editingConfigId, payload);
+  } else {
+    await window.projectManager.configs.create(projectsState.configProjectId, payload);
+  }
+  document.getElementById('configFormPanel').classList.add('d-none');
+  await loadConfigs(projectsState.configProjectId);
+}
+
+async function selectConfigFile(inputId) {
+  const selected = await window.projectManager.configs.selectFile();
+  if (selected) {
+    document.getElementById(inputId).value = selected;
+  }
+}
+
+async function switchConfig(configId) {
+  const config = projectsState.configs.find((item) => item.id === configId);
+  if (!confirm(`确定要将「${config.name}」复制覆盖到目标文件吗？\n目标：${config.target_path}\n切换前会自动备份当前目标文件。`)) {
+    return;
+  }
+  const result = await window.projectManager.configs.switch(configId);
+  alert(result.backupPath ? `切换成功，备份文件：${result.backupPath}` : '切换成功，目标文件此前不存在，未生成备份。');
+  await loadConfigs(projectsState.configProjectId);
+}
+
+async function previewConfig(configId) {
+  const content = await window.projectManager.configs.preview(configId);
+  const preview = document.getElementById('configPreview');
+  preview.textContent = content;
+  preview.classList.remove('d-none');
 }
 
 async function saveProject() {
@@ -226,6 +340,11 @@ function bindProjectsEvents() {
   document.getElementById('addProjectBtn').addEventListener('click', () => openProjectModal());
   document.getElementById('saveProjectBtn').addEventListener('click', saveProject);
   document.getElementById('saveExecutableBtn').addEventListener('click', saveExecutable);
+  document.getElementById('addConfigBtn').addEventListener('click', () => openConfigForm());
+  document.getElementById('saveConfigBtn').addEventListener('click', saveConfig);
+  document.getElementById('cancelConfigBtn').addEventListener('click', () => document.getElementById('configFormPanel').classList.add('d-none'));
+  document.getElementById('selectConfigSourceBtn').addEventListener('click', () => selectConfigFile('configSourceInput'));
+  document.getElementById('selectConfigTargetBtn').addEventListener('click', () => selectConfigFile('configTargetInput'));
   document.getElementById('selectProjectPathBtn').addEventListener('click', selectProjectDirectory);
   document.getElementById('selectExecPathBtn').addEventListener('click', selectExecutable);
   document.getElementById('projectSearchInput').addEventListener('input', (event) => { projectsState.keyword = event.target.value; document.getElementById('projectTableBody').innerHTML = renderProjectRows(); });
@@ -237,7 +356,23 @@ function bindProjectsEvents() {
     if (button.dataset.action === 'edit') openProjectModal(projectsState.projects.find((project) => project.id === id));
     if (button.dataset.action === 'delete') await deleteProject(id);
     if (button.dataset.action === 'executable') await openExecutableModal(id);
+    if (button.dataset.action === 'configs') await openConfigModal(id);
     if (['start', 'stop', 'restart'].includes(button.dataset.action)) await runProjectAction(button.dataset.action, id);
+  });
+  document.getElementById('configTableBody').addEventListener('click', async (event) => {
+    const button = event.target.closest('[data-config-action]');
+    if (!button) return;
+    const id = Number(button.dataset.id);
+    const config = projectsState.configs.find((item) => item.id === id);
+    if (button.dataset.configAction === 'edit') openConfigForm(config);
+    if (button.dataset.configAction === 'delete') {
+      if (confirm('确定删除该配置记录吗？不会删除本地文件。')) {
+        await window.projectManager.configs.delete(id);
+        await loadConfigs(projectsState.configProjectId);
+      }
+    }
+    if (button.dataset.configAction === 'preview') await previewConfig(id);
+    if (button.dataset.configAction === 'switch') await switchConfig(id);
   });
 }
 

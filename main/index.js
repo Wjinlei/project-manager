@@ -3,6 +3,7 @@ const path = require('path');
 const { initializeDatabase, closeDatabase } = require('./database');
 const { registerProjectManagerIpc } = require('./project-manager');
 const { registerProcessManagerIpc } = require('./process-manager');
+const { registerConfigManagerIpc } = require('./config-manager');
 
 let mainWindow;
 
@@ -27,6 +28,7 @@ app.whenReady().then(() => {
   initializeDatabase();
   registerProjectManagerIpc(ipcMain, () => mainWindow);
   registerProcessManagerIpc(ipcMain, () => mainWindow);
+  registerConfigManagerIpc(ipcMain, () => mainWindow);
   createWindow();
 
   app.on('activate', () => {
