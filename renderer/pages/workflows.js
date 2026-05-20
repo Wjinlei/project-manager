@@ -87,11 +87,15 @@ function renderEditor() {
 }
 
 async function addWorkflow() {
-  const name = prompt('流程名称');
-  if (!name?.trim()) return;
-  const workflow = await window.projectManager.workflows.create({ name: name.trim(), type: 'multi', project_id: null, description: '' });
-  workflowState.selectedWorkflowId = workflow.id;
-  await loadWorkflows();
+  try {
+    const name = prompt('流程名称');
+    if (!name?.trim()) return;
+    const workflow = await window.projectManager.workflows.create({ name: name.trim(), type: 'multi', project_id: null, description: '' });
+    workflowState.selectedWorkflowId = workflow.id;
+    await loadWorkflows();
+  } catch (error) {
+    alert(error.message || '新建流程失败');
+  }
 }
 
 async function saveWorkflowName() {
@@ -130,12 +134,19 @@ async function loadWorkflows() {
 window.workflowsPage = {
   render: renderWorkflowPage,
   async mount() {
-    document.getElementById('addWorkflowBtn').addEventListener('click', addWorkflow);
+    document.getElementById('appContent').addEventListener('click', handleWorkflowClick);
     workflowState.unsubscribe = window.projectManager.workflows.onStatus((status) => { workflowState.statuses[status.workflowId] = status; renderEditor(); });
     await loadWorkflows();
   },
   unmount() {
+    document.getElementById('appContent').removeEventListener('click', handleWorkflowClick);
     workflowState.unsubscribe?.();
     workflowState.unsubscribe = null;
   }
 };
+
+function handleWorkflowClick(event) {
+  if (event.target.closest('#addWorkflowBtn')) {
+    addWorkflow();
+  }
+}
