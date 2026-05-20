@@ -1,6 +1,11 @@
 window.addEventListener('DOMContentLoaded', async () => {
-  document.getElementById('sidebarToggle').addEventListener('click', () => {
-    document.querySelector('.app-shell').classList.toggle('sidebar-collapsed');
+  const shell = document.querySelector('.app-shell');
+  const settings = window.projectManager ? await window.projectManager.settings.get() : {};
+  shell.classList.toggle('sidebar-collapsed', Boolean(settings.sidebarCollapsed));
+
+  document.getElementById('sidebarToggle').addEventListener('click', async () => {
+    const collapsed = shell.classList.toggle('sidebar-collapsed');
+    await window.projectManager.settings.set({ sidebarCollapsed: collapsed });
   });
 
   document.querySelectorAll('.nav-item').forEach((item) => {

@@ -5,6 +5,7 @@ const { registerProjectManagerIpc } = require('./project-manager');
 const { registerProcessManagerIpc } = require('./process-manager');
 const { registerConfigManagerIpc } = require('./config-manager');
 const { registerWorkflowManagerIpc } = require('./workflow-manager');
+const { registerSettingsManagerIpc } = require('./settings-manager');
 
 let mainWindow;
 
@@ -31,6 +32,7 @@ app.whenReady().then(() => {
   registerProcessManagerIpc(ipcMain, () => mainWindow);
   registerConfigManagerIpc(ipcMain, () => mainWindow);
   registerWorkflowManagerIpc(ipcMain, () => mainWindow);
+  registerSettingsManagerIpc(ipcMain);
   createWindow();
 
   app.on('activate', () => {

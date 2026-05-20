@@ -3,6 +3,10 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('projectManager', {
   getVersion: () => ipcRenderer.invoke('app:get-version'),
   getPages: () => ipcRenderer.invoke('navigation:get-pages'),
+  settings: {
+    get: () => ipcRenderer.invoke('settings:get'),
+    set: (payload) => ipcRenderer.invoke('settings:set', payload)
+  },
   projects: {
     list: () => ipcRenderer.invoke('projects:list'),
     get: (id) => ipcRenderer.invoke('projects:get', id),
