@@ -397,9 +397,6 @@ async function getRuntimeStatus(projectId) {
       source: 'saved'
     };
   }
-  if (savedRuntime?.pid) {
-    removeRuntimeStatus(id);
-  }
   const repositories = getRepositories();
   const project = repositories.projects.findById(id);
   const executable = getExecutable(id);
@@ -530,7 +527,6 @@ async function startProject(projectId) {
   child.on('error', (err) => {
     runningProcesses.delete(id);
     if (!appQuitting) {
-      removeRuntimeStatus(id);
       updateProjectStatus(id, 'error');
     }
     appendProjectLog(id, 'stderr', `启动失败: ${err.message} (文件: ${executable.exec_path})\n`);
@@ -545,7 +541,6 @@ async function startProject(projectId) {
   child.on('exit', (code) => {
     runningProcesses.delete(id);
     if (!appQuitting) {
-      removeRuntimeStatus(id);
       updateProjectStatus(id, code === 0 ? 'stopped' : 'error');
     }
     appendProjectLog(id, 'system', `进程已退出，退出码: ${code}\n`);
