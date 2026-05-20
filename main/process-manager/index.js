@@ -9,6 +9,7 @@ const outputBuffers = new Map();
 const logWatchers = new Map();
 const MAX_OUTPUT_LINES = 1000;
 const MAX_LOG_BYTES = 1024 * 1024;
+const STOP_TIMEOUT_MS = 5000;
 let mainWindow;
 
 function getMainWindow() {
@@ -345,6 +346,44 @@ function updateProjectStatus(projectId, status) {
   }
 }
 
+function waitForProcessExit(child, timeoutMs = STOP_TIMEOUT_MS) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (result) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      child.removeListener('exit', onExit);
+      child.removeListener('close', onClose);
+      child.removeListener('error', onError);
+      resolve(result);
+    };
+    const onExit = (code, signal) => finish({ exited: true, code, signal });
+    const onClose = (code, signal) => finish({ exited: true, code, signal });
+    const onError = (error) => finish({ exited: true, error });
+    const timer = setTimeout(() => finish({ exited: false }), timeoutMs);
+    child.once('exit', onExit);
+    child.once('close', onClose);
+    child.once('error', onError);
+  });
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForStoppedStatus(projectId, timeoutMs = 3000) {
+  const startedAt = Date.now();
+  let status = await getRuntimeStatus(projectId);
+  while (status.running && Date.now() - startedAt < timeoutMs) {
+    await delay(300);
+    status = await getRuntimeStatus(projectId);
+  }
+  return status;
+}
+
 async function startProject(projectId) {
   const id = Number(projectId);
   if (runningProcesses.has(id)) {
@@ -424,22 +463,28 @@ async function stopProject(projectId) {
   if (!runtime) {
     const status = await getRuntimeStatus(id);
     if (status.running && !status.managed) {
-      return status;
+      return { ...status, message: '检测到外部启动的进程，未执行停止以避免误杀。' };
     }
     updateProjectStatus(id, 'stopped');
     return { projectId: id, running: false, pid: null, managed: false, source: 'none' };
   }
 
+  let stopped = false;
   try {
-    runtime.process.kill('SIGTERM');
-    setTimeout(() => {
+    if (!runtime.process.killed) {
+      runtime.process.kill('SIGTERM');
+    }
+    const gracefulResult = await waitForProcessExit(runtime.process);
+    stopped = gracefulResult.exited;
+    if (!stopped) {
       if (runningProcesses.has(id)) {
         runtime.process.kill('SIGKILL');
-        runningProcesses.delete(id);
-        updateProjectStatus(id, 'stopped');
+        const forcedResult = await waitForProcessExit(runtime.process, 2000);
+        stopped = forcedResult.exited || runtime.process.killed;
       }
-    }, 5000);
+    }
   } catch (err) {
+    appendProjectLog(id, 'stderr', `停止失败: ${err.message}\n`);
     getMainWindow()?.webContents.send('terminal:output', {
       projectId: id,
       type: 'stderr',
@@ -450,11 +495,19 @@ async function stopProject(projectId) {
 
   runningProcesses.delete(id);
   updateProjectStatus(id, 'stopped');
-  return { projectId: id, running: false, pid: null, managed: false, source: 'none' };
+  appendProjectLog(id, 'system', stopped ? '进程已停止\n' : '已执行停止流程，进程状态待系统刷新\n');
+  return { projectId: id, running: false, pid: null, managed: false, source: 'none', stopped };
 }
 
 async function restartProject(projectId) {
-  await stopProject(projectId);
+  const stopResult = await stopProject(projectId);
+  if (stopResult.running && !stopResult.managed) {
+    return stopResult;
+  }
+  const status = await waitForStoppedStatus(projectId);
+  if (status.running) {
+    return { ...status, message: '项目尚未完全停止，已取消重启。' };
+  }
   return await startProject(projectId);
 }
 
