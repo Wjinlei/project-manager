@@ -90,9 +90,79 @@ function startProject(projectId) {
   }
 
   const workDir = executable.work_dir || project.path || path.dirname(executable.exec_path);
-  const child = spawn(executable.exec_path, parseArgs(executable.args), {
+  const projectType = (project.type || '').toLowerCase();
+  const ext = path.extname(executable.exec_path).toLowerCase();
+  const args = parseArgs(executable.args);
+
+  let spawnCmd, spawnArgs, needsShell = false;
+
+  switch (projectType) {
+    case 'go':
+      spawnCmd = 'go';
+      spawnArgs = ['run', executable.exec_path, ...args];
+      break;
+    case 'node':
+      spawnCmd = 'node';
+      spawnArgs = [executable.exec_path, ...args];
+      break;
+    case 'python':
+      spawnCmd = 'python';
+      spawnArgs = [executable.exec_path, ...args];
+      break;
+    case 'java':
+      spawnCmd = 'java';
+      spawnArgs = ['-jar', executable.exec_path, ...args];
+      break;
+    case '.net':
+      spawnCmd = 'dotnet';
+      spawnArgs = ['run', '--project', executable.exec_path, ...args];
+      break;
+    case 'php':
+      spawnCmd = 'php';
+      spawnArgs = [executable.exec_path, ...args];
+      break;
+    case 'html':
+      spawnCmd = 'npx';
+      spawnArgs = ['http-server', workDir, '-p', args[0] || '8080'];
+      break;
+    default:
+      switch (ext) {
+        case '.js':
+          spawnCmd = 'node';
+          spawnArgs = [executable.exec_path, ...args];
+          break;
+        case '.go':
+          spawnCmd = 'go';
+          spawnArgs = ['run', executable.exec_path, ...args];
+          break;
+        case '.py':
+          spawnCmd = 'python';
+          spawnArgs = [executable.exec_path, ...args];
+          break;
+        case '.sh':
+          spawnCmd = 'bash';
+          spawnArgs = [executable.exec_path, ...args];
+          needsShell = true;
+          break;
+        case '.bat':
+        case '.cmd':
+          spawnCmd = executable.exec_path;
+          spawnArgs = args;
+          needsShell = true;
+          break;
+        case '.ps1':
+          spawnCmd = 'powershell';
+          spawnArgs = ['-ExecutionPolicy', 'Bypass', '-File', executable.exec_path, ...args];
+          break;
+        default:
+          spawnCmd = executable.exec_path;
+          spawnArgs = args;
+      }
+  }
+
+  const child = spawn(spawnCmd, spawnArgs, {
     cwd: workDir,
-    shell: false,
+    shell: needsShell,
     windowsHide: false
   });
 
@@ -113,9 +183,15 @@ function startProject(projectId) {
     getMainWindow()?.webContents.send('terminal:output', output);
   });
 
-  child.on('error', () => {
+  child.on('error', (err) => {
     runningProcesses.delete(id);
     updateProjectStatus(id, 'error');
+    getMainWindow()?.webContents.send('terminal:output', {
+      projectId: id,
+      type: 'stderr',
+      data: `启动失败: ${err.message} (文件: ${executable.exec_path})`,
+      time: new Date().toISOString()
+    });
   });
 
   child.on('exit', (code) => {
