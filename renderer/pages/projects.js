@@ -225,7 +225,11 @@ function renderProjectsPage() {
 }
 
 async function refreshTable() {
-  projectsState.runtimeStatuses = await window.projectManager.process.listStatuses();
+  try {
+    projectsState.runtimeStatuses = await window.projectManager.process.listStatuses();
+  } catch (_error) {
+    projectsState.runtimeStatuses = [];
+  }
   document.getElementById('projectTypeTabs').innerHTML = renderProjectTabs();
   document.getElementById('projectTableBody').innerHTML = renderProjectRows();
 }

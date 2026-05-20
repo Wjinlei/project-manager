@@ -1,7 +1,9 @@
-const { execFile, spawn } = require('child_process');
+const { execFile } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const pidtree = require('pidtree');
+const treeKill = require('tree-kill');
 const { getRepositories } = require('../database');
 
 const runningProcesses = new Map();
@@ -19,6 +21,11 @@ function getMainWindow() {
 
 function markAppQuitting() {
   appQuitting = true;
+}
+
+async function getExeca() {
+  const mod = await import('execa');
+  return mod.execa;
 }
 
 function appendOutput(projectId, type, data) {
@@ -72,6 +79,19 @@ function removeRuntimeStatus(projectId) {
 
 function getSavedRuntimeStatus(projectId) {
   return readRuntimeStatusFile()[Number(projectId)] || null;
+}
+
+function buildRuntimeRecord(projectId, processInfo, spawnInfo) {
+  return {
+    projectId: Number(projectId),
+    pid: Number(processInfo.pid),
+    startedAt: processInfo.startedAt,
+    command: spawnInfo.spawnCmd,
+    args: spawnInfo.spawnArgs,
+    cwd: spawnInfo.workDir,
+    source: 'managed',
+    lastKnownStatus: 'running'
+  };
 }
 
 function sanitizeLogName(name, projectId) {
@@ -444,16 +464,32 @@ function waitForProcessExit(child, timeoutMs = STOP_TIMEOUT_MS) {
   });
 }
 
-function killProcessTree(pid) {
+async function getProcessTree(pid) {
+  try {
+    return await pidtree(Number(pid), { root: true });
+  } catch (_err) {
+    return isProcessAlive(pid) ? [Number(pid)] : [];
+  }
+}
+
+function killProcessTree(pid, signal = 'SIGTERM') {
   return new Promise((resolve) => {
-    if (process.platform !== 'win32') {
-      resolve(false);
-      return;
-    }
-    execFile('taskkill.exe', ['/PID', String(pid), '/T', '/F'], { windowsHide: true }, (error) => {
-      resolve(!error);
+    treeKill(Number(pid), signal, (error) => {
+      resolve(!error || !isProcessAlive(pid));
     });
   });
+}
+
+async function waitForPidStopped(pid, timeoutMs = STOP_TIMEOUT_MS) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const tree = await getProcessTree(pid);
+    if (tree.length === 0) {
+      return true;
+    }
+    await delay(200);
+  }
+  return (await getProcessTree(pid)).length === 0;
 }
 
 function delay(ms) {
@@ -475,6 +511,10 @@ async function startProject(projectId) {
   if (runningProcesses.has(id)) {
     return await getRuntimeStatus(id);
   }
+  const savedRuntime = getSavedRuntimeStatus(id);
+  if (savedRuntime?.pid && isProcessAlive(savedRuntime.pid)) {
+    return await getRuntimeStatus(id);
+  }
 
   const repositories = getRepositories();
   const project = repositories.projects.findById(id);
@@ -492,22 +532,37 @@ async function startProject(projectId) {
     return external;
   }
 
-  const { workDir, spawnCmd, spawnArgs, needsShell } = getSpawnOptions(project, executable);
+  const spawnInfo = getSpawnOptions(project, executable);
+  const { workDir, spawnCmd, spawnArgs, needsShell } = spawnInfo;
   ensureLogDirectory();
 
-  const child = spawn(spawnCmd, spawnArgs, {
-    cwd: workDir,
-    shell: needsShell,
-    windowsHide: false
-  });
-
   const startedAt = new Date().toISOString();
+  let child;
+  try {
+    const execa = await getExeca();
+    child = execa(spawnCmd, spawnArgs, {
+      cwd: workDir,
+      shell: needsShell,
+      windowsHide: false,
+      reject: false,
+      all: false
+    });
+  } catch (err) {
+    updateProjectStatus(id, 'error');
+    appendProjectLog(id, 'stderr', `启动失败: ${err.message}\n`);
+    throw err;
+  }
+  if (!child.pid) {
+    updateProjectStatus(id, 'error');
+    appendProjectLog(id, 'stderr', '启动失败: 未获取到进程 PID\n');
+    throw new Error('启动失败: 未获取到进程 PID');
+  }
   runningProcesses.set(id, {
     process: child,
     startedAt,
     output: []
   });
-  saveRuntimeStatus(id, { pid: child.pid, startedAt, source: 'managed' });
+  saveRuntimeStatus(id, buildRuntimeRecord(id, { pid: child.pid, startedAt }, spawnInfo));
   updateProjectStatus(id, 'running');
 
   child.stdout?.on('data', (chunk) => {
@@ -555,18 +610,20 @@ async function stopProject(projectId) {
   if (!runtime) {
     const savedRuntime = getSavedRuntimeStatus(id);
     if (savedRuntime?.pid && isProcessAlive(savedRuntime.pid)) {
-      if (process.platform === 'win32') {
-        await killProcessTree(savedRuntime.pid);
-      } else {
-        process.kill(Number(savedRuntime.pid), 'SIGTERM');
+      const killed = await killProcessTree(savedRuntime.pid);
+      const stopped = killed && await waitForPidStopped(savedRuntime.pid);
+      if (stopped) {
+        removeRuntimeStatus(id);
+        updateProjectStatus(id, 'stopped');
+        appendProjectLog(id, 'system', '已停止保存的托管进程\n');
+        return { projectId: id, running: false, pid: null, managed: false, source: 'none', stopped: true };
       }
-      removeRuntimeStatus(id);
-      updateProjectStatus(id, 'stopped');
-      appendProjectLog(id, 'system', '已停止保存的托管进程\n');
-      return { projectId: id, running: false, pid: null, managed: false, source: 'none', stopped: true };
+      appendProjectLog(id, 'stderr', '停止失败: 保存的托管进程仍在运行\n');
+      return { projectId: id, running: true, pid: Number(savedRuntime.pid), managed: true, source: 'saved', stopped: false, message: '停止失败，进程仍在运行。' };
     }
     if (savedRuntime?.pid) {
-      removeRuntimeStatus(id);
+      updateProjectStatus(id, 'stopped');
+      return { projectId: id, running: false, pid: null, managed: true, source: 'saved', stopped: true };
     }
     const status = await getRuntimeStatus(id);
     if (status.running && !status.managed) {
@@ -578,24 +635,16 @@ async function stopProject(projectId) {
 
   let stopped = false;
   try {
-    if (process.platform === 'win32') {
-      const killedTree = await killProcessTree(runtime.process.pid);
-      stopped = killedTree;
-      if (killedTree) {
-        await waitForProcessExit(runtime.process, 2000);
-      }
-    } else if (!runtime.process.killed) {
-      runtime.process.kill('SIGTERM');
-    }
+    const killedTree = await killProcessTree(runtime.process.pid);
+    stopped = killedTree && await waitForPidStopped(runtime.process.pid);
     if (!stopped) {
       const gracefulResult = await waitForProcessExit(runtime.process);
       stopped = gracefulResult.exited;
     }
     if (!stopped) {
       if (runningProcesses.has(id)) {
-        runtime.process.kill('SIGKILL');
-        const forcedResult = await waitForProcessExit(runtime.process, 2000);
-        stopped = forcedResult.exited || runtime.process.killed;
+        const forcedTree = await killProcessTree(runtime.process.pid, 'SIGKILL');
+        stopped = forcedTree && await waitForPidStopped(runtime.process.pid, 2000);
       }
     }
   } catch (err) {
@@ -609,15 +658,20 @@ async function stopProject(projectId) {
   }
 
   runningProcesses.delete(id);
-  removeRuntimeStatus(id);
-  updateProjectStatus(id, 'stopped');
-  appendProjectLog(id, 'system', stopped ? '进程已停止\n' : '已执行停止流程，进程状态待系统刷新\n');
+  if (stopped) {
+    removeRuntimeStatus(id);
+    updateProjectStatus(id, 'stopped');
+  }
+  appendProjectLog(id, 'system', stopped ? '进程已停止\n' : '停止失败，进程状态待系统刷新\n');
+  if (!stopped) {
+    return { projectId: id, running: true, pid: runtime.process.pid, managed: true, source: 'managed', stopped: false, message: '停止失败，进程仍可能在运行。' };
+  }
   return { projectId: id, running: false, pid: null, managed: false, source: 'none', stopped };
 }
 
 async function restartProject(projectId) {
   const stopResult = await stopProject(projectId);
-  if (stopResult.running && !stopResult.managed) {
+  if (stopResult.running) {
     return stopResult;
   }
   const status = await waitForStoppedStatus(projectId);
@@ -632,9 +686,13 @@ async function listRuntimeStatuses() {
   const projects = repositories.projects.findAll();
   const statuses = [];
   for (const project of projects) {
-    const status = await getRuntimeStatus(project.id);
-    if (status.running) {
-      statuses.push(status);
+    try {
+      const status = await getRuntimeStatus(project.id);
+      if (status.running) {
+        statuses.push(status);
+      }
+    } catch (error) {
+      appendProjectLog(project.id, 'stderr', `状态检测失败: ${error.message}\n`);
     }
   }
   return statuses;
@@ -661,8 +719,8 @@ function getExternalStartCommand(projectId) {
     throw new Error('项目不存在');
   }
   const executable = getExecutable(id);
-  if (!executable?.exec_path) {
-    throw new Error('请先配置执行文件');
+  if (!executable || (!executable.exec_path && !executable.args?.trim())) {
+    throw new Error('请先配置执行文件或执行命令');
   }
   const spawnInfo = getSpawnOptions(project, executable);
   const logPath = getLogPath(project);
