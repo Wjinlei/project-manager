@@ -413,7 +413,7 @@ async function getRuntimeStatus(projectId) {
   const id = Number(projectId);
   const runtime = runningProcesses.get(id);
   if (runtime) {
-    return { projectId: id, running: true, pid: runtime.process.pid, startedAt: runtime.startedAt, managed: true, source: 'managed' };
+    return { projectId: id, running: true, pid: runtime.pid || runtime.process.pid, startedAt: runtime.startedAt, managed: true, source: 'managed' };
   }
   const savedRuntime = getSavedRuntimeStatus(id);
   if (savedRuntime?.pid && isProcessAlive(savedRuntime.pid)) {
@@ -582,10 +582,15 @@ async function startProject(projectId) {
   }
   runningProcesses.set(id, {
     process: child,
+    pid: child.pid,
     startedAt,
     output: []
   });
   const managedPid = await resolveManagedPid(child.pid);
+  const runtime = runningProcesses.get(id);
+  if (runtime) {
+    runtime.pid = managedPid;
+  }
   saveRuntimeStatus(id, buildRuntimeRecord(id, { pid: managedPid, startedAt }, spawnInfo));
   updateProjectStatus(id, 'running');
 
@@ -642,17 +647,18 @@ async function stopProject(projectId) {
   }
 
   let stopped = false;
+  const targetPid = runtime.pid || runtime.process.pid;
   try {
-    const killedTree = await killProcessTree(runtime.process.pid);
-    stopped = killedTree && await waitForPidStopped(runtime.process.pid);
+    const killedTree = await killProcessTree(targetPid);
+    stopped = killedTree && await waitForPidStopped(targetPid);
     if (!stopped) {
       const gracefulResult = await waitForProcessExit(runtime.process);
       stopped = gracefulResult.exited;
     }
     if (!stopped) {
       if (runningProcesses.has(id)) {
-        const forcedTree = await killProcessTree(runtime.process.pid, 'SIGKILL');
-        stopped = forcedTree && await waitForPidStopped(runtime.process.pid, 2000);
+        const forcedTree = await killProcessTree(targetPid, 'SIGKILL');
+        stopped = forcedTree && await waitForPidStopped(targetPid, 2000);
       }
     }
   } catch (err) {
@@ -670,7 +676,7 @@ async function stopProject(projectId) {
     updateProjectStatus(id, 'stopped');
   }
   if (!stopped) {
-    return { projectId: id, running: true, pid: runtime.process.pid, managed: true, source: 'managed', stopped: false, message: '停止失败，进程仍可能在运行。' };
+    return { projectId: id, running: true, pid: targetPid, managed: true, source: 'managed', stopped: false, message: '停止失败，进程仍可能在运行。' };
   }
   return { projectId: id, running: false, pid: null, managed: false, source: 'none', stopped };
 }
