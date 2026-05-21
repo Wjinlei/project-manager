@@ -120,13 +120,13 @@ function renderProjectRows() {
         <td class="project-path" title="${escapeHtml(project.path)}">${escapeHtml(project.path)}</td>
         <td class="project-cell" title="${escapeHtml(updatedAt)}">${escapeHtml(updatedAt)}</td>
         <td class="text-center">
-          <button class="btn btn-sm btn-outline-success" data-action="start" data-id="${project.id}" ${isRunning || isOperating ? 'disabled' : ''}>${isOperating ? operatingText : '启动'}</button>
-          <button class="btn btn-sm btn-outline-warning" data-action="stop" data-id="${project.id}" ${(!isRunning && !isOperating) || isOperating ? 'disabled' : ''}>${isOperating ? operatingText : '停止'}</button>
-          <button class="btn btn-sm btn-outline-primary" data-action="restart" data-id="${project.id}" ${isOperating ? 'disabled' : ''}>${isOperating ? operatingText : '重启'}</button>
-          <button class="btn btn-sm btn-outline-dark" data-action="terminal" data-id="${project.id}">终端</button>
-          <button class="btn btn-sm btn-outline-secondary" data-action="configs" data-id="${project.id}">配置</button>
-          <button class="btn btn-sm btn-outline-secondary" data-action="edit" data-id="${project.id}">设置</button>
-          <button class="btn btn-sm btn-outline-danger" data-action="delete" data-id="${project.id}">删除</button>
+          <button class="btn btn-sm btn-success" data-action="start" data-id="${project.id}" ${isRunning || isOperating ? 'disabled' : ''}>${isOperating && operatingAction === 'start' ? '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> ' : ''}启动</button>
+          <button class="btn btn-sm btn-warning" data-action="stop" data-id="${project.id}" ${(!isRunning && !isOperating) || isOperating ? 'disabled' : ''}>${isOperating && operatingAction === 'stop' ? '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> ' : ''}停止</button>
+          <button class="btn btn-sm btn-primary" data-action="restart" data-id="${project.id}" ${isOperating ? 'disabled' : ''}>${isOperating && operatingAction === 'restart' ? '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> ' : ''}重启</button>
+          <button class="btn btn-sm btn-dark" data-action="terminal" data-id="${project.id}">终端</button>
+          <button class="btn btn-sm btn-secondary" data-action="configs" data-id="${project.id}">配置</button>
+          <button class="btn btn-sm btn-secondary" data-action="edit" data-id="${project.id}">设置</button>
+          <button class="btn btn-sm btn-danger" data-action="delete" data-id="${project.id}">删除</button>
         </td>
       </tr>
     `;
@@ -166,12 +166,12 @@ function renderProjectsPage() {
           <div class="modal-header"><h5 class="modal-title" id="projectModalTitle">添加项目</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
           <div class="modal-body">
             <form id="projectForm">
-              <div class="mb-3"><label class="form-label">项目目录</label><div class="input-group input-group-sm"><input class="form-control" id="projectPathInput" required><button class="btn btn-outline-secondary" type="button" id="selectProjectPathBtn">选择目录</button></div></div>
+              <div class="mb-3"><label class="form-label">项目目录</label><div class="input-group input-group-sm"><input class="form-control" id="projectPathInput" required><button class="btn btn-secondary" type="button" id="selectProjectPathBtn">选择目录</button></div></div>
               <div class="row g-3"><div class="col-md-6"><label class="form-label">项目名称</label><input class="form-control form-control-sm" id="projectNameInput" required></div><div class="col-md-6"><label class="form-label">项目类型</label><select class="form-select form-select-sm" id="projectTypeInput">${PROJECT_TYPES.filter((type) => type !== '全部').map((type) => `<option value="${escapeHtml(type)}">${escapeHtml(type)}</option>`).join('')}</select></div></div>
               <div class="mt-3"><label class="form-label">备注</label><textarea class="form-control form-control-sm" id="projectRemarkInput" rows="3"></textarea></div>
               <hr>
               <div class="mb-3"><label class="form-label">启动方式</label><select class="form-select form-select-sm" id="execModeInput"><option value="file">使用执行文件路径</option><option value="command">使用执行命令</option></select></div>
-              <div class="mb-3" id="execPathGroup"><label class="form-label">执行文件路径</label><div class="input-group input-group-sm"><input class="form-control" id="execPathInput"><button class="btn btn-outline-secondary" type="button" id="selectExecPathBtn">选择文件</button></div></div>
+              <div class="mb-3" id="execPathGroup"><label class="form-label">执行文件路径</label><div class="input-group input-group-sm"><input class="form-control" id="execPathInput"><button class="btn btn-secondary" type="button" id="selectExecPathBtn">选择文件</button></div></div>
               <div class="mb-3"><label class="form-label" id="execArgsLabel">启动参数</label><input class="form-control form-control-sm" id="execArgsInput" placeholder="例如：--port 3000"></div>
               <div class="mb-3"><label class="form-label">工作目录</label><input class="form-control form-control-sm" id="execWorkDirInput" placeholder="默认使用项目目录"></div>
             </form>
@@ -189,8 +189,8 @@ function renderProjectsPage() {
             <div class="terminal-modal-toolbar d-flex align-items-center justify-content-between gap-2 mb-2">
               <div class="small text-muted" id="terminalLogPath"></div>
               <div class="text-nowrap">
-                <button class="btn btn-sm btn-outline-secondary" id="refreshTerminalBtn">刷新</button>
-                <button class="btn btn-sm btn-outline-danger" id="clearProjectLogBtn">清屏</button>
+                <button class="btn btn-sm btn-secondary" id="refreshTerminalBtn">刷新</button>
+                <button class="btn btn-sm btn-danger" id="clearProjectLogBtn">清屏</button>
               </div>
             </div>
             <div class="terminal-container terminal-container-modal terminal-text-view" id="projectTerminalContainer"></div>
@@ -214,8 +214,8 @@ function renderProjectsPage() {
             <div class="border rounded p-3 mt-3 d-none" id="configFormPanel">
               <div class="row g-3">
                 <div class="col-md-4"><label class="form-label">配置名称</label><input class="form-control form-control-sm" id="configNameInput"></div>
-                <div class="col-md-4"><label class="form-label">源文件</label><div class="input-group input-group-sm"><input class="form-control" id="configSourceInput"><button class="btn btn-outline-secondary" id="selectConfigSourceBtn">选择</button></div></div>
-                <div class="col-md-4"><label class="form-label">目标文件</label><div class="input-group input-group-sm"><input class="form-control" id="configTargetInput"><button class="btn btn-outline-secondary" id="selectConfigTargetBtn">选择</button></div></div>
+                <div class="col-md-4"><label class="form-label">源文件</label><div class="input-group input-group-sm"><input class="form-control" id="configSourceInput"><button class="btn btn-secondary" id="selectConfigSourceBtn">选择</button></div></div>
+                <div class="col-md-4"><label class="form-label">目标文件</label><div class="input-group input-group-sm"><input class="form-control" id="configTargetInput"><button class="btn btn-secondary" id="selectConfigTargetBtn">选择</button></div></div>
               </div>
               <div class="mt-3 text-end"><button class="btn btn-sm btn-secondary" id="cancelConfigBtn">取消</button><button class="btn btn-sm btn-bt" id="saveConfigBtn">保存</button></div>
             </div>
@@ -349,10 +349,10 @@ function renderConfigRows() {
       <td class="project-path" title="${escapeHtml(config.target_path)}">${escapeHtml(config.target_path)}</td>
       <td>${config.is_active ? '<span class="badge text-bg-success">当前激活</span>' : '<span class="badge text-bg-secondary">未激活</span>'}</td>
       <td class="text-end text-nowrap">
-        <button class="btn btn-sm btn-outline-success" data-config-action="switch" data-id="${config.id}">切换</button>
-        <button class="btn btn-sm btn-outline-info" data-config-action="preview" data-id="${config.id}">预览</button>
-        <button class="btn btn-sm btn-outline-secondary" data-config-action="edit" data-id="${config.id}">编辑</button>
-        <button class="btn btn-sm btn-outline-danger" data-config-action="delete" data-id="${config.id}">删除</button>
+        <button class="btn btn-sm btn-success" data-config-action="switch" data-id="${config.id}">切换</button>
+        <button class="btn btn-sm btn-info" data-config-action="preview" data-id="${config.id}">预览</button>
+        <button class="btn btn-sm btn-secondary" data-config-action="edit" data-id="${config.id}">编辑</button>
+        <button class="btn btn-sm btn-danger" data-config-action="delete" data-id="${config.id}">删除</button>
       </td>
     </tr>
   `).join('');
