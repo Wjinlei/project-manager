@@ -14,6 +14,7 @@ let projectsState = {
   fitAddon: null,
   terminalUnsubscribe: null,
   logUnsubscribe: null,
+  terminalLogContent: '',
   operatingProjectId: null,
   operatingAction: null
 };
@@ -184,13 +185,11 @@ function renderProjectsPage() {
             <div class="terminal-modal-toolbar d-flex align-items-center justify-content-between gap-2 mb-2">
               <div class="small text-muted" id="terminalLogPath"></div>
               <div class="text-nowrap">
-                <button class="btn btn-sm btn-outline-secondary" id="copyStartCommandBtn">复制启动命令</button>
                 <button class="btn btn-sm btn-outline-secondary" id="refreshTerminalBtn">刷新</button>
                 <button class="btn btn-sm btn-outline-danger" id="clearProjectLogBtn">清屏</button>
               </div>
             </div>
-            <div class="terminal-container terminal-container-modal" id="projectTerminalContainer"></div>
-            <textarea class="form-control form-control-sm mt-2 d-none" id="startCommandOutput" rows="3" readonly></textarea>
+            <pre class="terminal-container terminal-container-modal terminal-text-view" id="projectTerminalContainer"></pre>
           </div>
         </div>
       </div>
@@ -269,10 +268,16 @@ function updateExecutableFields() {
 }
 
 function writeTerminalText(data) {
-  if (!projectsState.terminal || !data) {
+  const container = document.getElementById('projectTerminalContainer');
+  if (!container || !data) {
     return;
   }
-  projectsState.terminal.write(String(data).replaceAll('\n', '\r\n'));
+  const shouldStickToBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 8;
+  container.textContent += String(data);
+  projectsState.terminalLogContent += String(data);
+  if (shouldStickToBottom) {
+    container.scrollTop = container.scrollHeight;
+  }
 }
 
 function disposeProjectTerminal() {
@@ -287,20 +292,24 @@ function disposeProjectTerminal() {
   if (projectsState.terminalProjectId) {
     window.projectManager.terminal.unwatchLog(projectsState.terminalProjectId);
   }
-  projectsState.terminal?.dispose();
   projectsState.terminal = null;
   projectsState.fitAddon = null;
+  projectsState.terminalLogContent = '';
   projectsState.terminalProjectId = null;
 }
 
 async function loadProjectLog(projectId) {
   const log = await window.projectManager.terminal.getLog(projectId);
   document.getElementById('terminalLogPath').textContent = log.logPath;
-  projectsState.terminal.clear();
-  if (log.content) {
-    writeTerminalText(log.content);
-  } else {
-    writeTerminalText(`日志文件暂无内容：${log.logPath}\n`);
+  const container = document.getElementById('projectTerminalContainer');
+  const content = log.content || `日志文件暂无内容：${log.logPath}\n`;
+  if (projectsState.terminalLogContent !== content) {
+    const shouldStickToBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 8;
+    container.textContent = content;
+    projectsState.terminalLogContent = content;
+    if (shouldStickToBottom) {
+      container.scrollTop = container.scrollHeight;
+    }
   }
 }
 
@@ -311,21 +320,6 @@ async function openTerminalModal(projectId) {
   document.getElementById('terminalModalTitle').textContent = `项目终端 - ${project?.name || projectId}`;
   const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('terminalModal'));
   modal.show();
-  projectsState.terminal = new Terminal({
-    cursorBlink: true,
-    convertEol: true,
-    fontFamily: 'Consolas, "Courier New", monospace',
-    fontSize: 13,
-    theme: {
-      background: '#000',
-      foreground: '#e5e7eb'
-    }
-  });
-  projectsState.fitAddon = new FitAddon.FitAddon();
-  projectsState.terminal.loadAddon(projectsState.fitAddon);
-  projectsState.terminal.open(document.getElementById('projectTerminalContainer'));
-  projectsState.fitAddon.fit();
-  setTimeout(() => projectsState.fitAddon?.fit(), 150);
   await loadProjectLog(projectId);
   await window.projectManager.terminal.watchLog(projectId);
   projectsState.logUnsubscribe = window.projectManager.terminal.onLogOutput((output) => {
@@ -424,27 +418,13 @@ async function previewConfig(configId) {
   preview.classList.remove('d-none');
 }
 
-async function copyStartCommand() {
-  if (!projectsState.terminalProjectId) {
-    return;
-  }
-  try {
-    const result = await window.projectManager.terminal.getStartCommand(projectsState.terminalProjectId);
-    const output = document.getElementById('startCommandOutput');
-    output.value = result.command;
-    output.classList.remove('d-none');
-    await navigator.clipboard.writeText(result.command);
-  } catch (error) {
-    alert(error.message || '获取启动命令失败');
-  }
-}
-
 async function clearProjectLog() {
   if (!projectsState.terminalProjectId) {
     return;
   }
   await window.projectManager.terminal.clearLog(projectsState.terminalProjectId);
-  projectsState.terminal?.clear();
+  document.getElementById('projectTerminalContainer').textContent = '';
+  projectsState.terminalLogContent = '';
 }
 
 async function saveProject() {
@@ -510,7 +490,6 @@ function bindProjectsEvents() {
   document.getElementById('addProjectBtn').addEventListener('click', () => openProjectModal());
   document.getElementById('saveProjectBtn').addEventListener('click', saveProject);
   document.getElementById('terminalModal').addEventListener('hidden.bs.modal', disposeProjectTerminal);
-  document.getElementById('copyStartCommandBtn').addEventListener('click', copyStartCommand);
   document.getElementById('refreshTerminalBtn').addEventListener('click', () => projectsState.terminalProjectId && loadProjectLog(projectsState.terminalProjectId));
   document.getElementById('clearProjectLogBtn').addEventListener('click', clearProjectLog);
   document.getElementById('addConfigBtn').addEventListener('click', () => openConfigForm());

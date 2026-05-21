@@ -573,13 +573,11 @@ async function startProject(projectId) {
   } catch (err) {
     closeLogFd();
     updateProjectStatus(id, 'error');
-    appendProjectLog(id, 'stderr', `启动失败: ${err.message}\n`);
     throw err;
   }
   if (!child.pid) {
     closeLogFd();
     updateProjectStatus(id, 'error');
-    appendProjectLog(id, 'stderr', '启动失败: 未获取到进程 PID\n');
     throw new Error('启动失败: 未获取到进程 PID');
   }
   runningProcesses.set(id, {
@@ -597,7 +595,6 @@ async function startProject(projectId) {
     if (!appQuitting) {
       updateProjectStatus(id, 'error');
     }
-    appendProjectLog(id, 'stderr', `启动失败: ${err.message} (文件: ${executable.exec_path})\n`);
     getMainWindow()?.webContents.send('terminal:output', {
       projectId: id,
       type: 'stderr',
@@ -612,7 +609,6 @@ async function startProject(projectId) {
     if (!appQuitting) {
       updateProjectStatus(id, code === 0 ? 'stopped' : 'error');
     }
-    appendProjectLog(id, 'system', `进程已退出，退出码: ${code}\n`);
   });
 
   return await getRuntimeStatus(id);
@@ -629,10 +625,8 @@ async function stopProject(projectId) {
       if (stopped) {
         removeRuntimeStatus(id);
         updateProjectStatus(id, 'stopped');
-        appendProjectLog(id, 'system', '已停止保存的托管进程\n');
         return { projectId: id, running: false, pid: null, managed: false, source: 'none', stopped: true };
       }
-      appendProjectLog(id, 'stderr', '停止失败: 保存的托管进程仍在运行\n');
       return { projectId: id, running: true, pid: Number(savedRuntime.pid), managed: true, source: 'saved', stopped: false, message: '停止失败，进程仍在运行。' };
     }
     if (savedRuntime?.pid) {
@@ -662,7 +656,6 @@ async function stopProject(projectId) {
       }
     }
   } catch (err) {
-    appendProjectLog(id, 'stderr', `停止失败: ${err.message}\n`);
     getMainWindow()?.webContents.send('terminal:output', {
       projectId: id,
       type: 'stderr',
@@ -676,7 +669,6 @@ async function stopProject(projectId) {
     removeRuntimeStatus(id);
     updateProjectStatus(id, 'stopped');
   }
-  appendProjectLog(id, 'system', stopped ? '进程已停止\n' : '停止失败，进程状态待系统刷新\n');
   if (!stopped) {
     return { projectId: id, running: true, pid: runtime.process.pid, managed: true, source: 'managed', stopped: false, message: '停止失败，进程仍可能在运行。' };
   }
@@ -705,8 +697,7 @@ async function listRuntimeStatuses() {
       if (status.running) {
         statuses.push(status);
       }
-    } catch (error) {
-      appendProjectLog(project.id, 'stderr', `状态检测失败: ${error.message}\n`);
+    } catch (_error) {
     }
   }
   return statuses;

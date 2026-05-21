@@ -366,7 +366,7 @@ body {
   padding: 8px;
   background: #000;
   border-radius: 7px;
-  overflow: hidden;
+  overflow: auto;
 }
 
 .terminal-modal-content {
@@ -387,6 +387,19 @@ body {
   flex: 1 1 auto;
   height: auto;
   min-height: 0;
+}
+
+.terminal-text-view {
+  width: 100%;
+  margin: 0;
+  color: #e5e7eb;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+  resize: none;
 }
 
 .config-preview {
