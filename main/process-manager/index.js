@@ -546,6 +546,18 @@ async function startProject(projectId) {
   const { workDir, spawnCmd, spawnArgs, needsShell } = spawnInfo;
   ensureLogDirectory();
 
+  const logFd = fs.openSync(getLogPath(project), 'a');
+  
+  let logFdClosed = false;
+  const closeLogFd = () => {
+    if (!logFdClosed) {
+      fs.closeSync(logFd);
+      logFdClosed = true;
+    }
+  };
+  
+  watchProjectLog(id);
+
   const startedAt = new Date().toISOString();
   let child;
   try {
@@ -555,14 +567,17 @@ async function startProject(projectId) {
       shell: needsShell,
       windowsHide: false,
       reject: false,
-      all: false
+      all: false,
+      stdio: ['ignore', logFd, logFd]
     });
   } catch (err) {
+    closeLogFd();
     updateProjectStatus(id, 'error');
     appendProjectLog(id, 'stderr', `启动失败: ${err.message}\n`);
     throw err;
   }
   if (!child.pid) {
+    closeLogFd();
     updateProjectStatus(id, 'error');
     appendProjectLog(id, 'stderr', '启动失败: 未获取到进程 PID\n');
     throw new Error('启动失败: 未获取到进程 PID');
@@ -576,21 +591,8 @@ async function startProject(projectId) {
   saveRuntimeStatus(id, buildRuntimeRecord(id, { pid: managedPid, startedAt }, spawnInfo));
   updateProjectStatus(id, 'running');
 
-  child.stdout?.on('data', (chunk) => {
-    const data = chunk.toString();
-    appendProjectLog(id, 'stdout', data);
-    const output = appendOutput(id, 'stdout', data);
-    getMainWindow()?.webContents.send('terminal:output', output);
-  });
-
-  child.stderr?.on('data', (chunk) => {
-    const data = chunk.toString();
-    appendProjectLog(id, 'stderr', data);
-    const output = appendOutput(id, 'stderr', data);
-    getMainWindow()?.webContents.send('terminal:output', output);
-  });
-
   child.on('error', (err) => {
+    closeLogFd();
     runningProcesses.delete(id);
     if (!appQuitting) {
       updateProjectStatus(id, 'error');
@@ -605,6 +607,7 @@ async function startProject(projectId) {
   });
 
   child.on('exit', (code) => {
+    closeLogFd();
     runningProcesses.delete(id);
     if (!appQuitting) {
       updateProjectStatus(id, code === 0 ? 'stopped' : 'error');
