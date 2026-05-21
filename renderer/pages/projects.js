@@ -119,7 +119,7 @@ function renderProjectRows() {
         <td class="project-cell" title="${escapeHtml(runtime?.pid || '-')}">${runtime?.pid || '-'}</td>
         <td class="project-path" title="${escapeHtml(project.path)}">${escapeHtml(project.path)}</td>
         <td class="project-cell" title="${escapeHtml(updatedAt)}">${escapeHtml(updatedAt)}</td>
-        <td class="text-end text-nowrap">
+        <td class="text-center">
           <button class="btn btn-sm btn-outline-success" data-action="start" data-id="${project.id}" ${isRunning || isOperating ? 'disabled' : ''}>${isOperating ? operatingText : '启动'}</button>
           <button class="btn btn-sm btn-outline-warning" data-action="stop" data-id="${project.id}" ${(!isRunning && !isOperating) || isOperating ? 'disabled' : ''}>${isOperating ? operatingText : '停止'}</button>
           <button class="btn btn-sm btn-outline-primary" data-action="restart" data-id="${project.id}" ${isOperating ? 'disabled' : ''}>${isOperating ? operatingText : '重启'}</button>
@@ -153,7 +153,7 @@ function renderProjectsPage() {
             <th class="col-pid">PID</th>
             <th class="col-path">项目路径</th>
             <th class="col-time">更新时间</th>
-            <th class="col-actions text-end">操作</th>
+            <th class="col-actions text-center">操作</th>
           </tr>
         </thead>
         <tbody id="projectTableBody">${renderProjectRows()}</tbody>

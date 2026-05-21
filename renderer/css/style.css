@@ -275,8 +275,7 @@ body {
 }
 
 .project-table {
-  min-width: 1180px;
-  table-layout: fixed;
+  min-width: 1360px;
 }
 
 .project-table .col-name {
@@ -304,7 +303,7 @@ body {
 }
 
 .project-table .col-actions {
-  width: 220px;
+  width: auto;
 }
 
 .bt-table th {
