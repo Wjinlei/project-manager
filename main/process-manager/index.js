@@ -350,6 +350,16 @@ function isProcessAlive(pid) {
   }
 }
 
+async function resolveManagedPid(parentPid) {
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    const childPids = await pidtree(parentPid);
+    return childPids?.[0] || parentPid;
+  } catch (_err) {
+    return parentPid;
+  }
+}
+
 function processMatchesProject(proc, project, executable, spawnInfo) {
   const commandLine = normalizeText(proc.CommandLine);
   const executablePath = normalizeText(proc.ExecutablePath);
@@ -562,7 +572,8 @@ async function startProject(projectId) {
     startedAt,
     output: []
   });
-  saveRuntimeStatus(id, buildRuntimeRecord(id, { pid: child.pid, startedAt }, spawnInfo));
+  const managedPid = await resolveManagedPid(child.pid);
+  saveRuntimeStatus(id, buildRuntimeRecord(id, { pid: managedPid, startedAt }, spawnInfo));
   updateProjectStatus(id, 'running');
 
   child.stdout?.on('data', (chunk) => {
