@@ -28,6 +28,10 @@ function escapeHtml(value) {
     .replaceAll("'", '&#039;');
 }
 
+async function ansiToHtml(value) {
+  return await window.projectManager.terminal.ansiToHtml(String(value ?? ''));
+}
+
 function typeClass(type) {
   const map = {
     Go: 'text-bg-success',
@@ -189,7 +193,7 @@ function renderProjectsPage() {
                 <button class="btn btn-sm btn-outline-danger" id="clearProjectLogBtn">清屏</button>
               </div>
             </div>
-            <pre class="terminal-container terminal-container-modal terminal-text-view" id="projectTerminalContainer"></pre>
+            <div class="terminal-container terminal-container-modal terminal-text-view" id="projectTerminalContainer"></div>
           </div>
         </div>
       </div>
@@ -267,14 +271,14 @@ function updateExecutableFields() {
   document.getElementById('execArgsInput').placeholder = useCommand ? '例如：pnpm dev' : '例如：--port 3000';
 }
 
-function writeTerminalText(data) {
+async function writeTerminalText(data) {
   const container = document.getElementById('projectTerminalContainer');
   if (!container || !data) {
     return;
   }
   const shouldStickToBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 8;
-  container.textContent += String(data);
   projectsState.terminalLogContent += String(data);
+  container.innerHTML = await ansiToHtml(projectsState.terminalLogContent);
   if (shouldStickToBottom) {
     container.scrollTop = container.scrollHeight;
   }
@@ -305,8 +309,8 @@ async function loadProjectLog(projectId) {
   const content = log.content || `日志文件暂无内容：${log.logPath}\n`;
   if (projectsState.terminalLogContent !== content) {
     const shouldStickToBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 8;
-    container.textContent = content;
     projectsState.terminalLogContent = content;
+    container.innerHTML = await ansiToHtml(content);
     if (shouldStickToBottom) {
       container.scrollTop = container.scrollHeight;
     }
@@ -423,7 +427,7 @@ async function clearProjectLog() {
     return;
   }
   await window.projectManager.terminal.clearLog(projectsState.terminalProjectId);
-  document.getElementById('projectTerminalContainer').textContent = '';
+  document.getElementById('projectTerminalContainer').innerHTML = '';
   projectsState.terminalLogContent = '';
 }
 

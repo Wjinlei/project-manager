@@ -6,6 +6,7 @@ const { registerProcessManagerIpc, markAppQuitting } = require('./process-manage
 const { registerConfigManagerIpc } = require('./config-manager');
 const { registerWorkflowManagerIpc } = require('./workflow-manager');
 const { registerSettingsManagerIpc } = require('./settings-manager');
+const Convert = require('ansi-to-html');
 
 let mainWindow;
 
@@ -34,6 +35,17 @@ app.whenReady().then(() => {
   registerWorkflowManagerIpc(ipcMain, () => mainWindow);
   registerSettingsManagerIpc(ipcMain);
   createWindow();
+
+  const ansiConverter = new Convert({
+    fg: '#e5e7eb',
+    bg: '#1e1e1e',
+    newline: false,
+    escapeXML: true
+  });
+
+  ipcMain.handle('terminal:ansi-to-html', (event, text) => {
+    return ansiConverter.toHtml(String(text ?? ''));
+  });
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld('projectManager', {
     watchLog: (projectId) => ipcRenderer.invoke('terminal:watch-log', projectId),
     unwatchLog: (projectId) => ipcRenderer.invoke('terminal:unwatch-log', projectId),
     getStartCommand: (projectId) => ipcRenderer.invoke('terminal:get-start-command', projectId),
+    ansiToHtml: (text) => ipcRenderer.invoke('terminal:ansi-to-html', text),
     onOutput: (callback) => {
       const listener = (_event, output) => callback(output);
       ipcRenderer.on('terminal:output', listener);
