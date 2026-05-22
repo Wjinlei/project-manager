@@ -1,6 +1,16 @@
 const fs = require('fs');
 const path = require('path');
-const { getRepositories } = require('../database');
+const { getDataDirectory, getRepositories } = require('../database');
+
+function safeFilePart(value) {
+  return String(value || '').trim().replace(/[<>:"/\\|?*]/g, '_');
+}
+
+function getTemplatePath(project, targetPath, configName) {
+  const projectName = safeFilePart(project.name);
+  const fileName = path.basename(targetPath);
+  return path.join(getDataDirectory(), 'project-configs', projectName, `${fileName}.${safeFilePart(configName)}`);
+}
 
 function listConfigs(projectId) {
   return getRepositories()
@@ -13,27 +23,66 @@ function getConfig(configId) {
   return getRepositories().projectConfigs.findById(Number(configId));
 }
 
+function listAllConfigs() {
+  const repositories = getRepositories();
+  const projects = repositories.projects.findAll();
+  return repositories.projectConfigs.findAll().map((config) => ({
+    ...config,
+    project: projects.find((project) => project.id === config.project_id) || null
+  }));
+}
+
 function createConfig(projectId, payload) {
-  return getRepositories().projectConfigs.create({
-    project_id: Number(projectId),
-    name: payload.name,
-    source_path: payload.source_path,
-    target_path: payload.target_path,
-    is_active: payload.is_active ? 1 : 0
+  const repositories = getRepositories();
+  const project = repositories.projects.findById(Number(projectId));
+  const name = String(payload.name || '').trim();
+  const targetPath = path.normalize(payload.target_path || payload.config_path || payload.source_path || '');
+
+  if (!project) {
+    throw new Error('项目不存在');
+  }
+  if (!name) {
+    throw new Error('配置名称不能为空');
+  }
+  if (!targetPath || !fs.existsSync(targetPath) || !fs.statSync(targetPath).isFile()) {
+    throw new Error('配置文件不存在');
+  }
+
+  const templatePath = getTemplatePath(project, targetPath, name);
+  fs.mkdirSync(path.dirname(templatePath), { recursive: true });
+  fs.copyFileSync(targetPath, templatePath);
+
+  return repositories.projectConfigs.create({
+    project_id: project.id,
+    name,
+    source_path: templatePath,
+    target_path: targetPath,
+    is_active: 0
   });
 }
 
 function updateConfig(configId, payload) {
-  return getRepositories().projectConfigs.update(Number(configId), {
-    name: payload.name,
-    source_path: payload.source_path,
-    target_path: payload.target_path,
-    is_active: payload.is_active ? 1 : 0
-  });
+  const config = getConfig(configId);
+  const name = String(payload.name || '').trim();
+  if (!config) {
+    throw new Error('配置不存在');
+  }
+  if (!name) {
+    throw new Error('配置名称不能为空');
+  }
+  return getRepositories().projectConfigs.update(Number(configId), { name });
 }
 
 function deleteConfig(configId) {
-  return getRepositories().projectConfigs.delete(Number(configId));
+  const repositories = getRepositories();
+  const config = repositories.projectConfigs.findById(Number(configId));
+  if (!config) {
+    return false;
+  }
+  if (fs.existsSync(config.source_path)) {
+    fs.unlinkSync(config.source_path);
+  }
+  return repositories.projectConfigs.delete(Number(configId));
 }
 
 function previewConfig(configId) {
@@ -61,7 +110,7 @@ function switchConfig(configId) {
     throw new Error('配置不存在');
   }
   if (!fs.existsSync(config.source_path)) {
-    throw new Error('源配置文件不存在');
+    throw new Error('配置模板文件不存在');
   }
 
   fs.mkdirSync(path.dirname(config.target_path), { recursive: true });
@@ -106,6 +155,7 @@ async function selectConfigFile(browserWindow) {
 }
 
 function registerConfigManagerIpc(ipcMain, getMainWindow) {
+  ipcMain.handle('configs:list-all', () => listAllConfigs());
   ipcMain.handle('configs:list', (_event, projectId) => listConfigs(projectId));
   ipcMain.handle('configs:create', (_event, projectId, payload) => createConfig(projectId, payload));
   ipcMain.handle('configs:update', (_event, configId, payload) => updateConfig(configId, payload));
@@ -117,6 +167,7 @@ function registerConfigManagerIpc(ipcMain, getMainWindow) {
 }
 
 module.exports = {
+  listAllConfigs,
   listConfigs,
   getConfig,
   createConfig,

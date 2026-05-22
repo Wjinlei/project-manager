@@ -47,6 +47,7 @@ contextBridge.exposeInMainWorld('projectManager', {
     }
   },
   configs: {
+    listAll: () => ipcRenderer.invoke('configs:list-all'),
     list: (projectId) => ipcRenderer.invoke('configs:list', projectId),
     create: (projectId, payload) => ipcRenderer.invoke('configs:create', projectId, payload),
     update: (configId, payload) => ipcRenderer.invoke('configs:update', configId, payload),

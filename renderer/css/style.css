@@ -230,6 +230,12 @@ body {
   --bs-btn-hover-border-color: var(--bt-primary-hover);
 }
 
+.form-select,
+.form-select option {
+  color: var(--bt-text);
+  background-color: #fff;
+}
+
 .stat-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -306,6 +312,34 @@ body {
   width: auto;
 }
 
+.config-table {
+  min-width: 1360px;
+}
+
+.config-table .col-config-name {
+  width: 170px;
+}
+
+.config-table .col-config-project {
+  width: 170px;
+}
+
+.config-table .col-config-template {
+  width: 360px;
+}
+
+.config-table .col-config-target {
+  width: 360px;
+}
+
+.config-table .col-config-status {
+  width: 100px;
+}
+
+.config-table .col-config-actions {
+  width: auto;
+}
+
 .bt-table th {
   color: #666;
   background: #fafafa;
@@ -315,6 +349,15 @@ body {
 .project-cell,
 .project-path,
 .text-ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.config-cell {
+  display: block;
+  width: 100%;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

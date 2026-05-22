@@ -10,6 +10,11 @@ const pageDefinitions = {
     mount: () => window.projectsPage.mount(),
     unmount: () => window.projectsPage.unmount()
   },
+  configs: {
+    title: '配置管理',
+    render: () => window.configsPage.render(),
+    mount: () => window.configsPage.mount()
+  },
   workflows: {
     title: '流程编排',
     render: () => window.workflowsPage.render(),
