@@ -214,14 +214,18 @@ function renderProjectsPage() {
   `;
 }
 
+function renderProjectListView() {
+  document.getElementById('projectTypeTabs').innerHTML = renderProjectTabs();
+  document.getElementById('projectTableBody').innerHTML = renderProjectRows();
+}
+
 async function refreshTable() {
   try {
     projectsState.runtimeStatuses = await window.projectManager.process.listStatuses();
   } catch (_error) {
     projectsState.runtimeStatuses = [];
   }
-  document.getElementById('projectTypeTabs').innerHTML = renderProjectTabs();
-  document.getElementById('projectTableBody').innerHTML = renderProjectRows();
+  renderProjectListView();
 }
 
 async function loadProjects() {
@@ -443,8 +447,8 @@ function bindProjectsEvents() {
   document.getElementById('selectProjectPathBtn').addEventListener('click', selectProjectDirectory);
   document.getElementById('selectExecPathBtn').addEventListener('click', selectExecutable);
   document.getElementById('execModeInput').addEventListener('change', updateExecutableFields);
-  document.getElementById('projectSearchInput').addEventListener('input', (event) => { projectsState.keyword = event.target.value; document.getElementById('projectTableBody').innerHTML = renderProjectRows(); });
-  document.getElementById('projectTypeTabs').addEventListener('click', (event) => { const button = event.target.closest('[data-project-type]'); if (!button) return; projectsState.activeType = button.dataset.projectType; refreshTable(); });
+  document.getElementById('projectSearchInput').addEventListener('input', (event) => { projectsState.keyword = event.target.value; renderProjectListView(); });
+  document.getElementById('projectTypeTabs').addEventListener('click', (event) => { const button = event.target.closest('[data-project-type]'); if (!button) return; projectsState.activeType = button.dataset.projectType; renderProjectListView(); });
   document.getElementById('projectTableBody').addEventListener('click', async (event) => {
     try {
       const button = event.target.closest('[data-action]');

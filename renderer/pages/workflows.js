@@ -150,18 +150,31 @@ async function addStep() {
 }
 
 async function loadWorkflows() {
-  workflowState.projects = await window.projectManager.projects.list();
-  workflowState.runtimeStatuses = await window.projectManager.process.listStatuses();
-  workflowState.workflows = await window.projectManager.workflows.list();
+  const [projects, workflows] = await Promise.all([
+    window.projectManager.projects.list(),
+    window.projectManager.workflows.list()
+  ]);
+  workflowState.projects = projects;
+  workflowState.workflows = workflows;
   document.getElementById('workflowList').innerHTML = renderWorkflowList();
   if (workflowState.selectedWorkflowId) renderEditor();
+  refreshWorkflowRuntimeStatuses();
+}
+
+async function refreshWorkflowRuntimeStatuses() {
+  try {
+    workflowState.runtimeStatuses = await window.projectManager.process.listStatuses();
+    if (workflowState.selectedWorkflowId) renderEditor();
+  } catch (_error) {
+    workflowState.runtimeStatuses = [];
+  }
 }
 
 window.workflowsPage = {
   render: renderWorkflowPage,
   async mount() {
     document.getElementById('appContent').addEventListener('click', handleWorkflowClick);
-    workflowState.unsubscribe = window.projectManager.workflows.onStatus(async (status) => { workflowState.statuses[status.workflowId] = status; workflowState.runtimeStatuses = await window.projectManager.process.listStatuses(); renderEditor(); });
+    workflowState.unsubscribe = window.projectManager.workflows.onStatus((status) => { workflowState.statuses[status.workflowId] = status; refreshWorkflowRuntimeStatuses(); });
     await loadWorkflows();
   },
   unmount() {
