@@ -1,7 +1,7 @@
 const { spawn } = require('child_process');
 const { getRepositories } = require('../database');
 const { appendOutput } = require('../process-manager');
-const { startProject } = require('../process-manager');
+const { startProject, stopProject } = require('../process-manager');
 
 const runningWorkflows = new Map();
 let mainWindowGetter;
@@ -187,8 +187,24 @@ async function executeWorkflow(workflowId, options = {}) {
   return state;
 }
 
-function stopWorkflow(workflowId) {
-  runningWorkflows.delete(Number(workflowId));
+async function stopWorkflow(workflowId) {
+  const id = Number(workflowId);
+  const repositories = getRepositories();
+  const workflow = repositories.workflows.findById(id);
+  if (!workflow) return false;
+  
+  const steps = listSteps(id);
+  const startProjectSteps = steps.filter((step) => step.action_type === 'start_project');
+  
+  for (const step of startProjectSteps.reverse()) {
+    try {
+      await stopProject(step.project_id);
+    } catch (err) {
+      console.error(`停止项目 ${step.project_id} 失败:`, err);
+    }
+  }
+  
+  runningWorkflows.delete(id);
   emitWorkflowStatus(workflowId);
   return true;
 }

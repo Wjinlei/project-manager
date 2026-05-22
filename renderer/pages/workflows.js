@@ -1,4 +1,4 @@
-﻿let workflowState = { projects: [], runtimeStatuses: [], workflows: [], selectedWorkflowId: null, unsubscribe: null, statuses: {} };
+﻿let workflowState = { projects: [], runtimeStatuses: [], workflows: [], selectedWorkflowId: null, unsubscribe: null, statuses: {}, operating: false, operatingAction: null };
 
 function wfEscape(value) {
   return String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;');
@@ -81,6 +81,8 @@ function renderEditor() {
   const workflow = workflowState.workflows.find((item) => item.id === workflowState.selectedWorkflowId);
   if (!workflow) return;
   const running = Boolean(workflowState.statuses[workflow.id]?.running);
+  const isOperating = workflowState.operating;
+  const operatingAction = workflowState.operatingAction;
   document.getElementById('workflowEditor').innerHTML = `
     <div class="d-flex justify-content-between align-items-center mb-3">
       <div>
@@ -88,10 +90,10 @@ function renderEditor() {
         <div class="text-muted small mt-1">按顺序启动所选项目。</div>
       </div>
       <div class="text-nowrap">
-        <button class="btn btn-sm btn-outline-secondary" id="saveWorkflowBtn">保存</button>
-        <button class="btn btn-sm btn-outline-success" id="runWorkflowBtn" ${running ? 'disabled' : ''}>执行</button>
-        <button class="btn btn-sm btn-outline-warning" id="stopWorkflowBtn" ${running ? '' : 'disabled'}>中止</button>
-        <button class="btn btn-sm btn-outline-danger" id="deleteWorkflowBtn">删除</button>
+        <button class="btn btn-sm btn-secondary" id="saveWorkflowBtn">保存</button>
+        <button class="btn btn-sm btn-success" id="runWorkflowBtn" ${running || isOperating ? 'disabled' : ''}>${isOperating && operatingAction === 'run' ? '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> ' : ''}执行</button>
+        <button class="btn btn-sm btn-warning" id="stopWorkflowBtn" ${isOperating ? 'disabled' : ''}>${isOperating && operatingAction === 'stop' ? '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> ' : ''}停止</button>
+        <button class="btn btn-sm btn-danger" id="deleteWorkflowBtn">删除</button>
       </div>
     </div>
     <div class="border rounded p-3 mb-3">
@@ -103,8 +105,32 @@ function renderEditor() {
     <table class="table table-hover align-middle bt-table"><thead><tr><th>序号</th><th>步骤名称</th><th>项目</th><th>状态</th><th class="text-end">操作</th></tr></thead><tbody>${renderStepRows(workflow)}</tbody></table>
   `;
   document.getElementById('saveWorkflowBtn').addEventListener('click', saveWorkflowName);
-  document.getElementById('runWorkflowBtn').addEventListener('click', async () => { await window.projectManager.workflows.execute(workflow.id, { onFailure: 'abort' }); await loadWorkflows(); });
-  document.getElementById('stopWorkflowBtn').addEventListener('click', () => window.projectManager.workflows.stop(workflow.id));
+  document.getElementById('runWorkflowBtn').addEventListener('click', async () => {
+    workflowState.operating = true;
+    workflowState.operatingAction = 'run';
+    renderEditor();
+    try {
+      await window.projectManager.workflows.execute(workflow.id, { onFailure: 'abort' });
+      await loadWorkflows();
+    } finally {
+      workflowState.operating = false;
+      workflowState.operatingAction = null;
+      renderEditor();
+    }
+  });
+  document.getElementById('stopWorkflowBtn').addEventListener('click', async () => {
+    workflowState.operating = true;
+    workflowState.operatingAction = 'stop';
+    renderEditor();
+    try {
+      await window.projectManager.workflows.stop(workflow.id);
+      await loadWorkflows();
+    } finally {
+      workflowState.operating = false;
+      workflowState.operatingAction = null;
+      renderEditor();
+    }
+  });
   document.getElementById('deleteWorkflowBtn').addEventListener('click', async () => { if (confirm('确定删除该流程吗？')) { await window.projectManager.workflows.delete(workflow.id); workflowState.selectedWorkflowId = null; await loadWorkflows(); } });
   document.getElementById('addStepBtn').addEventListener('click', addStep);
   document.querySelectorAll('[data-step-delete]').forEach((button) => button.addEventListener('click', async () => { await window.projectManager.workflows.deleteStep(Number(button.dataset.stepDelete)); await loadWorkflows(); }));
