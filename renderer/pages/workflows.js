@@ -88,10 +88,10 @@ function renderEditor() {
         <div class="text-muted small mt-1">按顺序启动所选项目。</div>
       </div>
       <div class="text-nowrap">
-        <button class="btn btn-sm btn-outline-secondary" id="saveWorkflowBtn">保存名称</button>
+        <button class="btn btn-sm btn-outline-secondary" id="saveWorkflowBtn">保存</button>
         <button class="btn btn-sm btn-outline-success" id="runWorkflowBtn" ${running ? 'disabled' : ''}>执行</button>
         <button class="btn btn-sm btn-outline-warning" id="stopWorkflowBtn" ${running ? '' : 'disabled'}>中止</button>
-        <button class="btn btn-sm btn-outline-danger" id="deleteWorkflowBtn">删除流程</button>
+        <button class="btn btn-sm btn-outline-danger" id="deleteWorkflowBtn">删除</button>
       </div>
     </div>
     <div class="border rounded p-3 mb-3">

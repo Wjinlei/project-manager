@@ -123,7 +123,7 @@ function renderProjectRows() {
           <button class="btn btn-sm btn-warning" data-action="stop" data-id="${project.id}" ${(!isRunning && !isOperating) || isOperating ? 'disabled' : ''}>${isOperating && operatingAction === 'stop' ? '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> ' : ''}停止</button>
           <button class="btn btn-sm btn-primary" data-action="restart" data-id="${project.id}" ${isOperating ? 'disabled' : ''}>${isOperating && operatingAction === 'restart' ? '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> ' : ''}重启</button>
           <button class="btn btn-sm btn-dark" data-action="terminal" data-id="${project.id}">终端</button>
-          <button class="btn btn-sm btn-secondary" data-action="configs" data-id="${project.id}">切换配置</button>
+          <button class="btn btn-sm btn-secondary" data-action="configs" data-id="${project.id}">切换</button>
           <button class="btn btn-sm btn-secondary" data-action="edit" data-id="${project.id}">设置</button>
           <button class="btn btn-sm btn-danger" data-action="delete" data-id="${project.id}">删除</button>
         </td>
