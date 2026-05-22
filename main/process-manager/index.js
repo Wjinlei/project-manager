@@ -90,8 +90,24 @@ function buildRuntimeRecord(projectId, processInfo, spawnInfo) {
     args: spawnInfo.spawnArgs,
     cwd: spawnInfo.workDir,
     source: 'managed',
+    agent: true,
     lastKnownStatus: 'running'
   };
+}
+
+function getProjectAgentPath() {
+  return path.join(__dirname, 'project-agent.js');
+}
+
+function encodeAgentOptions(projectId, spawnInfo, logPath) {
+  return Buffer.from(JSON.stringify({
+    projectId: Number(projectId),
+    spawnCmd: spawnInfo.spawnCmd,
+    spawnArgs: spawnInfo.spawnArgs,
+    workDir: spawnInfo.workDir,
+    needsShell: spawnInfo.needsShell,
+    logPath
+  }), 'utf8').toString('base64');
 }
 
 function sanitizeLogName(name, projectId) {
@@ -350,16 +366,6 @@ function isProcessAlive(pid) {
   }
 }
 
-async function resolveManagedPid(parentPid) {
-  try {
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    const childPids = await pidtree(parentPid);
-    return childPids?.[0] || parentPid;
-  } catch (_err) {
-    return parentPid;
-  }
-}
-
 function processMatchesProject(proc, project, executable, spawnInfo) {
   const commandLine = normalizeText(proc.CommandLine);
   const executablePath = normalizeText(proc.ExecutablePath);
@@ -424,7 +430,7 @@ async function getRuntimeStatus(projectId) {
       pid: Number(savedRuntime.pid),
       startedAt: savedRuntime.startedAt || null,
       managed: true,
-      source: 'saved'
+      source: savedRuntime.source || 'saved'
     };
   }
   const repositories = getRepositories();
@@ -543,60 +549,43 @@ async function startProject(projectId) {
   }
 
   const spawnInfo = getSpawnOptions(project, executable);
-  const { workDir, spawnCmd, spawnArgs, needsShell } = spawnInfo;
   ensureLogDirectory();
-
-  const logFd = fs.openSync(getLogPath(project), 'a');
-  
-  let logFdClosed = false;
-  const closeLogFd = () => {
-    if (!logFdClosed) {
-      fs.closeSync(logFd);
-      logFdClosed = true;
-    }
-  };
-  
   watchProjectLog(id);
 
   const startedAt = new Date().toISOString();
   let child;
   try {
     const execa = await getExeca();
-    child = execa(spawnCmd, spawnArgs, {
-      cwd: workDir,
-      shell: needsShell,
-      windowsHide: false,
+    child = execa(process.execPath, [getProjectAgentPath(), encodeAgentOptions(id, spawnInfo, getLogPath(project))], {
+      cwd: __dirname,
+      shell: false,
+      detached: true,
+      windowsHide: true,
       reject: false,
       all: false,
-      stdio: ['ignore', logFd, logFd]
+      stdio: 'ignore'
     });
   } catch (err) {
-    closeLogFd();
     updateProjectStatus(id, 'error');
     throw err;
   }
   if (!child.pid) {
-    closeLogFd();
     updateProjectStatus(id, 'error');
     throw new Error('启动失败: 未获取到进程 PID');
   }
+  child.unref();
   runningProcesses.set(id, {
     process: child,
     pid: child.pid,
     startedAt,
     output: []
   });
-  const managedPid = await resolveManagedPid(child.pid);
-  const runtime = runningProcesses.get(id);
-  if (runtime) {
-    runtime.pid = managedPid;
-  }
-  saveRuntimeStatus(id, buildRuntimeRecord(id, { pid: managedPid, startedAt }, spawnInfo));
+  saveRuntimeStatus(id, buildRuntimeRecord(id, { pid: child.pid, startedAt }, spawnInfo));
   updateProjectStatus(id, 'running');
 
   child.on('error', (err) => {
-    closeLogFd();
     runningProcesses.delete(id);
+    removeRuntimeStatus(id);
     if (!appQuitting) {
       updateProjectStatus(id, 'error');
     }
@@ -609,8 +598,8 @@ async function startProject(projectId) {
   });
 
   child.on('exit', (code) => {
-    closeLogFd();
     runningProcesses.delete(id);
+    removeRuntimeStatus(id);
     if (!appQuitting) {
       updateProjectStatus(id, code === 0 ? 'stopped' : 'error');
     }
