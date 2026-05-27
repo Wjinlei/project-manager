@@ -73,5 +73,16 @@ contextBridge.exposeInMainWorld('projectManager', {
       ipcRenderer.on('workflow:status', listener);
       return () => ipcRenderer.removeListener('workflow:status', listener);
     }
+  },
+  tags: {
+    list: () => ipcRenderer.invoke('tags:list'),
+    get: (id) => ipcRenderer.invoke('tags:get', id),
+    create: (payload) => ipcRenderer.invoke('tags:create', payload),
+    update: (id, payload) => ipcRenderer.invoke('tags:update', id, payload),
+    delete: (id) => ipcRenderer.invoke('tags:delete', id)
+  },
+  projectTags: {
+    list: (projectId) => ipcRenderer.invoke('project-tags:list', projectId),
+    set: (projectId, tagIds) => ipcRenderer.invoke('project-tags:set', projectId, tagIds)
   }
 });

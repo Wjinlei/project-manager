@@ -68,6 +68,17 @@ function createRepositories(db) {
       'result',
       'output',
       'duration_ms'
+    ]),
+    tags: new Repository(db, 'tags', [
+      'name',
+      'color',
+      'created_at',
+      'updated_at'
+    ]),
+    projectTags: new Repository(db, 'project_tags', [
+      'project_id',
+      'tag_id',
+      'created_at'
     ])
   };
 }

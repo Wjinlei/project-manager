@@ -10,6 +10,12 @@ const pageDefinitions = {
     mount: () => window.projectsPage.mount(),
     unmount: () => window.projectsPage.unmount()
   },
+  tags: {
+    title: '标签管理',
+    render: () => window.tagsPage.render(),
+    mount: () => window.tagsPage.mount(),
+    unmount: () => window.tagsPage.unmount()
+  },
   configs: {
     title: '配置管理',
     render: () => window.configsPage.render(),

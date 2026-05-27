@@ -281,7 +281,7 @@ body {
 }
 
 .project-table {
-  min-width: 1360px;
+  min-width: 1500px;
 }
 
 .project-table .col-name {
@@ -300,6 +300,10 @@ body {
   width: 80px;
 }
 
+.project-table .col-tags {
+  width: 150px;
+}
+
 .project-table .col-path {
   width: 360px;
 }
@@ -309,7 +313,7 @@ body {
 }
 
 .project-table .col-actions {
-  width: auto;
+  width: 520px;
 }
 
 .config-table {

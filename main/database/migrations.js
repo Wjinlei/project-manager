@@ -95,11 +95,31 @@ function runMigrations(db) {
       duration_ms INTEGER
     );
 
+    CREATE TABLE IF NOT EXISTS tags (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      color TEXT NOT NULL DEFAULT '#6c757d',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS project_tags (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL,
+      tag_id INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+      FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE,
+      UNIQUE(project_id, tag_id)
+    );
+
     CREATE INDEX IF NOT EXISTS idx_project_configs_project_id ON project_configs(project_id);
     CREATE INDEX IF NOT EXISTS idx_project_dependencies_project_id ON project_dependencies(project_id);
     CREATE INDEX IF NOT EXISTS idx_workflows_project_id ON workflows(project_id);
     CREATE INDEX IF NOT EXISTS idx_workflow_steps_workflow_id ON workflow_steps(workflow_id);
     CREATE INDEX IF NOT EXISTS idx_task_logs_task ON task_logs(task_type, task_id);
+    CREATE INDEX IF NOT EXISTS idx_project_tags_project_id ON project_tags(project_id);
+    CREATE INDEX IF NOT EXISTS idx_project_tags_tag_id ON project_tags(tag_id);
   `);
 }
 

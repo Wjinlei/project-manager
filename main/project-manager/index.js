@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { getRepositories } = require('../database');
+const { setProjectTags } = require('../tag-manager');
 
 const PROJECT_TYPES = ['Go', 'Node', 'Python', 'Java', '.NET', 'PHP', 'HTML', 'Other'];
 
@@ -58,7 +59,13 @@ function getProject(id) {
 function createProject(payload) {
   const repositories = getRepositories();
   const data = normalizeProjectPayload(payload);
-  return repositories.projects.create(data);
+  const project = repositories.projects.create(data);
+  
+  if (Array.isArray(payload.tag_ids) && payload.tag_ids.length > 0) {
+    setProjectTags(project.id, payload.tag_ids);
+  }
+  
+  return project;
 }
 
 function updateProject(id, payload) {
@@ -78,7 +85,13 @@ function updateProject(id, payload) {
     updated_at: new Date().toISOString()
   };
 
-  return repositories.projects.update(id, data);
+  const project = repositories.projects.update(id, data);
+  
+  if (payload.tag_ids !== undefined) {
+    setProjectTags(id, payload.tag_ids);
+  }
+  
+  return project;
 }
 
 function deleteProject(id) {

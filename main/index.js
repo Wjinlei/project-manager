@@ -6,6 +6,7 @@ const { registerProcessManagerIpc, markAppQuitting } = require('./process-manage
 const { registerConfigManagerIpc } = require('./config-manager');
 const { registerWorkflowManagerIpc } = require('./workflow-manager');
 const { registerSettingsManagerIpc } = require('./settings-manager');
+const { registerTagManagerIpc } = require('./tag-manager');
 const Convert = require('ansi-to-html');
 
 let mainWindow;
@@ -34,6 +35,7 @@ app.whenReady().then(() => {
   registerConfigManagerIpc(ipcMain, () => mainWindow);
   registerWorkflowManagerIpc(ipcMain, () => mainWindow);
   registerSettingsManagerIpc(ipcMain);
+  registerTagManagerIpc(ipcMain);
   createWindow();
 
   const ansiConverter = new Convert({

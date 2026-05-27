@@ -15,7 +15,11 @@ let projectsState = {
   logUnsubscribe: null,
   terminalLogContent: '',
   operatingProjectId: null,
-  operatingAction: null
+  operatingAction: null,
+  tags: [],
+  availableTags: [],
+  selectedTagIds: [],
+  tempSelectedTagIds: []
 };
 
 function escapeHtml(value) {
@@ -79,7 +83,15 @@ function getFilteredProjects() {
     const keyword = projectsState.keyword.trim().toLowerCase();
     const keywordMatched = !keyword || [project.name, project.path, project.type, project.remark]
       .some((value) => String(value || '').toLowerCase().includes(keyword));
-    return typeMatched && keywordMatched;
+    
+    let tagMatched = true;
+    if (projectsState.selectedTagIds.length > 0) {
+      const projectTags = getProjectTags(project.id);
+      const projectTagIds = projectTags.map((tag) => tag.id);
+      tagMatched = projectsState.selectedTagIds.every((tagId) => projectTagIds.includes(tagId));
+    }
+    
+    return typeMatched && keywordMatched && tagMatched;
   });
 }
 
@@ -91,10 +103,94 @@ function renderProjectTabs() {
   `).join('');
 }
 
+function renderTagFilterBar() {
+  if (projectsState.availableTags.length === 0) {
+    return '';
+  }
+  
+  return `
+    <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+      ${projectsState.availableTags.map((tag) => {
+        const isSelected = projectsState.selectedTagIds.includes(tag.id);
+        return `
+          <button type="button" class="btn btn-sm tag-filter-btn ${isSelected ? 'btn-primary' : 'btn-outline-secondary'}" 
+                  data-filter-tag-id="${tag.id}" 
+                  style="${isSelected ? `background-color: ${escapeHtml(tag.color)} !important; border-color: ${escapeHtml(tag.color)} !important; color: ${getContrastColor(tag.color)} !important` : `border-color: ${escapeHtml(tag.color)} !important; color: ${escapeHtml(tag.color)} !important; background-color: transparent !important`}; padding: 2px 8px; font-size: 12px;">
+            ${escapeHtml(tag.name)}
+          </button>
+        `;
+      }).join('')}
+      ${projectsState.selectedTagIds.length > 0 ? `<button type="button" class="btn btn-sm btn-link text-muted" id="clearTagFilterBtn" style="font-size: 12px;">清除过滤</button>` : ''}
+    </div>
+  `;
+}
+
+function getContrastColor(hexColor) {
+  const r = parseInt(hexColor.slice(1, 3), 16);
+  const g = parseInt(hexColor.slice(3, 5), 16);
+  const b = parseInt(hexColor.slice(5, 7), 16);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.5 ? '#000' : '#fff';
+}
+
+function getProjectTags(projectId) {
+  return projectsState.tags.filter((tag) => tag.projectId === Number(projectId));
+}
+
+function renderTagSelector(selectedTagIds = []) {
+  if (projectsState.availableTags.length === 0) {
+    return '<span class="text-muted small">暂无标签，请先到标签管理页面添加标签。</span>';
+  }
+  
+  const selectedTags = projectsState.availableTags.filter((tag) => selectedTagIds.includes(tag.id));
+  const tagsHtml = selectedTags.length > 0 
+    ? selectedTags.map((tag) => `<span class="badge me-1" style="background-color: ${escapeHtml(tag.color)} !important; color: ${getContrastColor(tag.color)} !important; padding: 2px 8px; font-size: 12px;">${escapeHtml(tag.name)}</span>`).join('')
+    : '<span class="text-muted small">未选择标签</span>';
+  
+  return `
+    <div class="d-flex align-items-center gap-2">
+      <div id="selectedTagsDisplay">${tagsHtml}</div>
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="selectTagsBtn">选择标签</button>
+    </div>
+  `;
+}
+
+async function openTagSelectModal() {
+  projectsState.tempSelectedTagIds = [...projectsState.selectedTagIds];
+  document.getElementById('tagSelectList').innerHTML = renderTagSelectList(projectsState.tempSelectedTagIds);
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('tagSelectModal')).show();
+}
+
+function renderTagSelectList(selectedTagIds) {
+  if (projectsState.availableTags.length === 0) {
+    return '<span class="text-muted small">暂无标签，请先到标签管理页面添加标签。</span>';
+  }
+  
+  return projectsState.availableTags.map((tag) => {
+    const isSelected = selectedTagIds.includes(tag.id);
+    return `
+      <label class="d-flex align-items-center gap-2 p-2 border rounded" style="cursor: pointer; ${isSelected ? `background-color: ${escapeHtml(tag.color)}20; border-color: ${escapeHtml(tag.color)};` : ''}">
+        <input type="checkbox" class="tag-checkbox" value="${tag.id}" ${isSelected ? 'checked' : ''}>
+        <span class="badge" style="background-color: ${escapeHtml(tag.color)} !important; color: ${getContrastColor(tag.color)} !important; padding: 2px 8px; font-size: 12px;">${escapeHtml(tag.name)}</span>
+      </label>
+    `;
+  }).join('');
+}
+
+function confirmTagSelection() {
+  projectsState.selectedTagIds = [...projectsState.tempSelectedTagIds];
+  const selectedTags = projectsState.availableTags.filter((tag) => projectsState.selectedTagIds.includes(tag.id));
+  const tagsHtml = selectedTags.length > 0 
+    ? selectedTags.map((tag) => `<span class="badge me-1" style="background-color: ${escapeHtml(tag.color)} !important; color: ${getContrastColor(tag.color)} !important; padding: 2px 8px; font-size: 12px;">${escapeHtml(tag.name)}</span>`).join('')
+    : '<span class="text-muted small">未选择标签</span>';
+  document.getElementById('selectedTagsDisplay').innerHTML = tagsHtml;
+  bootstrap.Modal.getInstance(document.getElementById('tagSelectModal')).hide();
+}
+
 function renderProjectRows() {
   const projects = getFilteredProjects();
   if (projects.length === 0) {
-    return '<tr><td colspan="7" class="text-center text-muted py-5">暂无项目，请先添加本地目录。</td></tr>';
+    return '<tr><td colspan="8" class="text-center text-muted py-5">暂无项目，请先添加本地目录。</td></tr>';
   }
 
   return projects.map((project) => {
@@ -107,6 +203,10 @@ function renderProjectRows() {
     const operatingText = actionText(operatingAction, '处理中...');
     const statusClass = status === 'running' ? 'running' : status === 'error' ? 'error' : 'stopped';
     const updatedAt = formatLocalTime(project.updated_at || project.created_at || '');
+    const projectTags = getProjectTags(project.id);
+    const tagsHtml = projectTags.length > 0 
+      ? projectTags.map((tag) => `<span class="badge me-1" style="background-color: ${escapeHtml(tag.color)} !important; color: ${getContrastColor(tag.color)} !important; padding: 2px 8px; font-size: 12px;">${escapeHtml(tag.name)}</span>`).join('')
+      : '-';
     return `
       <tr>
         <td class="project-cell project-name-cell" title="${escapeHtml(`${project.name}${project.remark ? `\n${project.remark}` : ''}`)}">
@@ -116,6 +216,7 @@ function renderProjectRows() {
         <td class="project-cell" title="${escapeHtml(project.type)}"><span class="badge ${typeClass(project.type)}">${escapeHtml(project.type)}</span></td>
         <td class="project-cell" title="${escapeHtml(status)}"><span class="status-dot ${statusClass}"></span><span class="status-text ${statusClass}">${escapeHtml(status)}</span>${sourceText ? `<span class="badge text-bg-light ms-1">${sourceText}</span>` : ''}</td>
         <td class="project-cell" title="${escapeHtml(runtime?.pid || '-')}">${runtime?.pid || '-'}</td>
+        <td class="project-cell">${tagsHtml}</td>
         <td class="project-path" title="${escapeHtml(project.path)}">${escapeHtml(project.path)}</td>
         <td class="project-cell" title="${escapeHtml(updatedAt)}">${escapeHtml(updatedAt)}</td>
         <td class="text-center">
@@ -142,6 +243,7 @@ function renderProjectsPage() {
       <input class="form-control form-control-sm" id="projectSearchInput" type="search" placeholder="搜索项目名称、路径、类型或备注" value="${escapeHtml(projectsState.keyword)}">
       <span class="text-muted small">共 ${projectsState.projects.length} 个项目</span>
     </div>
+    <div id="tagFilterBar">${renderTagFilterBar()}</div>
     <div class="table-responsive project-table-wrap">
       <table class="table table-hover align-middle bt-table project-table">
         <thead>
@@ -150,6 +252,7 @@ function renderProjectsPage() {
             <th class="col-type">类型</th>
             <th class="col-status">状态</th>
             <th class="col-pid">PID</th>
+            <th class="col-tags">标签</th>
             <th class="col-path">项目路径</th>
             <th class="col-time">更新时间</th>
             <th class="col-actions text-center">操作</th>
@@ -168,6 +271,7 @@ function renderProjectsPage() {
               <div class="mb-3"><label class="form-label">项目目录</label><div class="input-group input-group-sm"><input class="form-control" id="projectPathInput" required><button class="btn btn-secondary" type="button" id="selectProjectPathBtn">选择目录</button></div></div>
               <div class="row g-3"><div class="col-md-6"><label class="form-label">项目名称</label><input class="form-control form-control-sm" id="projectNameInput" required></div><div class="col-md-6"><label class="form-label">项目类型</label><select class="form-select form-select-sm" id="projectTypeInput">${PROJECT_TYPES.filter((type) => type !== '全部').map((type) => `<option value="${escapeHtml(type)}">${escapeHtml(type)}</option>`).join('')}</select></div></div>
               <div class="mt-3"><label class="form-label">备注</label><textarea class="form-control form-control-sm" id="projectRemarkInput" rows="3"></textarea></div>
+              <div class="mt-3"><label class="form-label">标签</label><div class="d-flex flex-wrap gap-2" id="projectTagsSelect"></div></div>
               <hr>
               <div class="mb-3"><label class="form-label">启动方式</label><select class="form-select form-select-sm" id="execModeInput"><option value="file">使用执行文件路径</option><option value="command">使用执行命令</option></select></div>
               <div class="mb-3" id="execPathGroup"><label class="form-label">执行文件路径</label><div class="input-group input-group-sm"><input class="form-control" id="execPathInput"><button class="btn btn-secondary" type="button" id="selectExecPathBtn">选择文件</button></div></div>
@@ -176,6 +280,18 @@ function renderProjectsPage() {
             </form>
           </div>
           <div class="modal-footer"><button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">取消</button><button type="button" class="btn btn-sm btn-bt" id="saveProjectBtn">保存</button></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="tagSelectModal" tabindex="-1">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header"><h5 class="modal-title">选择标签</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+          <div class="modal-body">
+            <div class="d-flex flex-wrap gap-2" id="tagSelectList"></div>
+          </div>
+          <div class="modal-footer"><button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">取消</button><button type="button" class="btn btn-sm btn-bt" id="confirmTagsBtn">确定</button></div>
         </div>
       </div>
     </div>
@@ -216,6 +332,7 @@ function renderProjectsPage() {
 
 function renderProjectListView() {
   document.getElementById('projectTypeTabs').innerHTML = renderProjectTabs();
+  document.getElementById('tagFilterBar').innerHTML = renderTagFilterBar();
   document.getElementById('projectTableBody').innerHTML = renderProjectRows();
 }
 
@@ -225,16 +342,38 @@ async function refreshTable() {
   } catch (_error) {
     projectsState.runtimeStatuses = [];
   }
+  
+  const allTags = [];
+  for (const project of projectsState.projects) {
+    const tags = await window.projectManager.projectTags.list(project.id);
+    tags.forEach((tag) => {
+      allTags.push({ ...tag, projectId: project.id });
+    });
+  }
+  projectsState.tags = allTags;
+  
   renderProjectListView();
 }
 
 async function loadProjects() {
   projectsState.projects = await window.projectManager.projects.list();
+  projectsState.availableTags = await window.projectManager.tags.list();
+  
+  const allTags = [];
+  for (const project of projectsState.projects) {
+    const tags = await window.projectManager.projectTags.list(project.id);
+    tags.forEach((tag) => {
+      allTags.push({ ...tag, projectId: project.id });
+    });
+  }
+  projectsState.tags = allTags;
+  
   await refreshTable();
 }
 
 async function openProjectModal(project) {
   projectsState.editingId = project?.id || null;
+  projectsState.selectedTagIds = [];
   document.getElementById('projectModalTitle').textContent = project ? '编辑项目' : '添加项目';
   document.getElementById('projectPathInput').value = project?.path || '';
   document.getElementById('projectNameInput').value = project?.name || '';
@@ -244,13 +383,21 @@ async function openProjectModal(project) {
   document.getElementById('execPathInput').value = '';
   document.getElementById('execArgsInput').value = '';
   document.getElementById('execWorkDirInput').value = project?.path || '';
+  
+  let selectedTagIds = [];
   if (project?.id) {
     const executable = await window.projectManager.process.getExecutable(project.id);
     document.getElementById('execModeInput').value = executable?.exec_path ? 'file' : 'command';
     document.getElementById('execPathInput').value = executable?.exec_path || '';
     document.getElementById('execArgsInput').value = executable?.args || '';
     document.getElementById('execWorkDirInput').value = executable?.work_dir || project.path || '';
+    
+    const projectTags = await window.projectManager.projectTags.list(project.id);
+    selectedTagIds = projectTags.map((tag) => tag.id);
   }
+  
+  projectsState.selectedTagIds = selectedTagIds;
+  document.getElementById('projectTagsSelect').innerHTML = renderTagSelector(selectedTagIds);
   bootstrap.Modal.getOrCreateInstance(document.getElementById('projectModal')).show();
   updateExecutableFields();
 }
@@ -386,6 +533,9 @@ async function saveProject() {
   const execArgs = document.getElementById('execArgsInput').value.trim();
   if (useCommand && !execArgs) { alert('请填写执行命令'); return; }
   if (!useCommand && !execPath) { alert('请填写执行文件路径'); return; }
+  
+  payload.tag_ids = projectsState.selectedTagIds;
+  
   const project = projectsState.editingId
     ? await window.projectManager.projects.update(projectsState.editingId, payload)
     : await window.projectManager.projects.create(payload);
@@ -449,6 +599,50 @@ function bindProjectsEvents() {
   document.getElementById('execModeInput').addEventListener('change', updateExecutableFields);
   document.getElementById('projectSearchInput').addEventListener('input', (event) => { projectsState.keyword = event.target.value; renderProjectListView(); });
   document.getElementById('projectTypeTabs').addEventListener('click', (event) => { const button = event.target.closest('[data-project-type]'); if (!button) return; projectsState.activeType = button.dataset.projectType; renderProjectListView(); });
+  document.getElementById('tagFilterBar').addEventListener('click', (event) => {
+    const filterBtn = event.target.closest('.tag-filter-btn');
+    if (filterBtn) {
+      const tagId = Number(filterBtn.dataset.filterTagId);
+      const index = projectsState.selectedTagIds.indexOf(tagId);
+      if (index > -1) {
+        projectsState.selectedTagIds.splice(index, 1);
+      } else {
+        projectsState.selectedTagIds.push(tagId);
+      }
+      renderProjectListView();
+      return;
+    }
+    
+    const clearBtn = event.target.closest('#clearTagFilterBtn');
+    if (clearBtn) {
+      projectsState.selectedTagIds = [];
+      renderProjectListView();
+    }
+  });
+  document.getElementById('projectTagsSelect').addEventListener('click', (event) => {
+    const selectBtn = event.target.closest('#selectTagsBtn');
+    if (selectBtn) {
+      openTagSelectModal();
+    }
+  });
+  document.getElementById('tagSelectList').addEventListener('change', (event) => {
+    const checkbox = event.target.closest('.tag-checkbox');
+    if (checkbox) {
+      const tagId = Number(checkbox.value);
+      if (checkbox.checked) {
+        if (!projectsState.tempSelectedTagIds.includes(tagId)) {
+          projectsState.tempSelectedTagIds.push(tagId);
+        }
+      } else {
+        const index = projectsState.tempSelectedTagIds.indexOf(tagId);
+        if (index > -1) {
+          projectsState.tempSelectedTagIds.splice(index, 1);
+        }
+      }
+      document.getElementById('tagSelectList').innerHTML = renderTagSelectList(projectsState.tempSelectedTagIds);
+    }
+  });
+  document.getElementById('confirmTagsBtn').addEventListener('click', confirmTagSelection);
   document.getElementById('projectTableBody').addEventListener('click', async (event) => {
     try {
       const button = event.target.closest('[data-action]');
