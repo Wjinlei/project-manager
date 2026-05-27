@@ -1,4 +1,4 @@
-﻿let workflowState = { projects: [], runtimeStatuses: [], workflows: [], selectedWorkflowId: null, unsubscribe: null, statuses: {}, operating: false, operatingAction: null, loading: false };
+﻿let workflowState = { projects: [], runtimeStatuses: [], workflows: [], selectedWorkflowId: null, unsubscribe: null, statuses: {}, operating: false, operatingAction: null, loading: false, editingStepId: null };
 
 function wfEscape(value) {
   return String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;');
@@ -21,11 +21,11 @@ function workflowProjectStatus(projectId) {
 function renderWorkflowPage() {
   return `
     <div class="row g-3">
-      <div class="col-md-4">
+      <div class="col-md-3">
         <div class="d-flex justify-content-between align-items-center mb-2"><h6 class="mb-0">流程列表</h6><button class="btn btn-sm btn-bt" id="addWorkflowBtn">新增流程</button></div>
         <div class="list-group" id="workflowList"></div>
       </div>
-      <div class="col-md-8">
+      <div class="col-md-9">
         <div class="workflow-editor" id="workflowEditor"><div class="placeholder-panel"><h5>请选择流程</h5><p>选择左侧流程后编辑步骤并执行。</p></div></div>
       </div>
     </div>
@@ -137,36 +137,78 @@ function getStepConfigSummary(step) {
 }
 
 function renderStepRows(workflow) {
-  if (!workflow.steps.length) return '<tr><td colspan="6" class="text-center text-muted py-4">暂无步骤，请添加步骤。</td></tr>';
+  if (!workflow.steps.length) return '<tr><td colspan="8" class="text-center text-muted py-4">暂无步骤，请添加步骤。</td></tr>';
   const status = workflowState.statuses[workflow.id];
   return workflow.steps.map((step, index) => {
-    const stepStatus = status?.steps?.find((item) => item.id === step.id)?.status || 'waiting';
+    const stepStatus = status?.steps?.find((item) => item.id === step.id)?.status;
     const projectStatus = workflowProjectStatus(step.project_id);
-    const title = stepStatus === 'running' ? `${projectStatus} / 执行中` : projectStatus;
-    const isEnabled = step.enabled !== false;
-    const configSummary = getStepConfigSummary(step);
+    
+    let statusText = '';
+    let statusClass = '';
+    
+    // 1. 被跳过的步骤（禁用导致跳过）
+    if (stepStatus === 'skipped') {
+      statusText = '已跳过';
+      statusClass = 'skipped';
+    }
+    // 2. 启动/停止项目：显示项目运行状态
+    else if (step.action_type === 'start_project' || step.action_type === 'stop_project') {
+      if (stepStatus === 'running') {
+        statusText = '执行中';
+        statusClass = 'running';
+      } else {
+        statusText = projectStatus === 'running' ? '运行中' : '已停止';
+        statusClass = projectStatus;
+      }
+    }
+    // 3. 其他任务类型：显示执行状态
+    else {
+      if (stepStatus === 'running') {
+        statusText = '执行中';
+        statusClass = 'running';
+      } else if (stepStatus === 'success') {
+        statusText = '执行成功';
+        statusClass = 'success';
+      } else if (stepStatus === 'failed') {
+        statusText = '执行失败';
+        statusClass = 'failed';
+      } else {
+        statusText = '-';
+        statusClass = '';
+      }
+    }
+    
+    const isEnabled = step.enabled !== 0 && step.enabled !== false;
     const isFirst = index === 0;
     const isLast = index === workflow.steps.length - 1;
+    const showWorkDir = step.action_type === 'command' || step.action_type === 'script';
     
     return `
       <tr class="${isEnabled ? '' : 'table-secondary'}">
-        <td>${step.step_order}</td>
-        <td>
+        <td class="wf-col-order">${step.step_order}</td>
+        <td class="wf-col-name" title="${wfEscape(step.name)}">
           <span class="me-1">${getStepTypeIcon(step.action_type)}</span>
-          ${wfEscape(step.name)}
+          <span class="text-truncate-cell">${wfEscape(step.name)}</span>
           ${!isEnabled ? '<span class="badge text-bg-secondary ms-1">已禁用</span>' : ''}
         </td>
-        <td>
-          <div class="small text-muted">${configSummary}</div>
+        <td class="wf-col-config" title="${wfEscape(getStepConfigSummary(step))}">
+          <div class="text-truncate-cell small text-muted">${getStepConfigSummary(step)}</div>
         </td>
-        <td>${wfEscape(workflowProjectName(step.project_id))}</td>
-        <td title="${wfEscape(title)}"><span class="status-dot ${projectStatus}"></span><span class="status-text ${projectStatus}">${wfEscape(projectStatus)}</span>${stepStatus === 'running' ? '<span class="badge text-bg-light ms-1">执行中</span>' : ''}</td>
-        <td class="text-end">
-          <button class="btn btn-sm btn-outline-secondary me-1" data-step-toggle="${step.id}" title="${isEnabled ? '禁用' : '启用'}">${isEnabled ? '禁用' : '启用'}</button>
-          <button class="btn btn-sm btn-outline-secondary me-1" data-step-up="${step.id}" ${isFirst ? 'disabled' : ''} title="上移">↑</button>
-          <button class="btn btn-sm btn-outline-secondary me-1" data-step-down="${step.id}" ${isLast ? 'disabled' : ''} title="下移">↓</button>
-          <button class="btn btn-sm btn-outline-secondary me-1" data-step-copy="${step.id}" title="复制">复制</button>
-          <button class="btn btn-sm btn-outline-danger" data-step-delete="${step.id}">删除</button>
+        <td class="wf-col-workdir" title="${wfEscape(showWorkDir ? (step.work_dir || '-') : '-')}">
+          <div class="text-truncate-cell small">${showWorkDir ? wfEscape(step.work_dir || '-') : '-'}</div>
+        </td>
+        <td class="wf-col-project" title="${wfEscape(workflowProjectName(step.project_id))}">
+          <span class="text-truncate-cell">${wfEscape(workflowProjectName(step.project_id))}</span>
+        </td>
+        <td class="wf-col-status"><span class="status-dot ${statusClass}"></span><span class="status-text ${statusClass}">${wfEscape(statusText)}</span>${stepStatus === 'failed' ? `<a href="#" class="ms-1 small text-danger" data-step-log="${workflow.id}" title="查看日志">详情</a>` : ''}</td>
+        <td class="wf-col-actions text-end text-nowrap">
+          <button class="btn btn-sm btn-success me-1" data-step-run="${step.id}" title="执行" ${!isEnabled ? 'disabled' : ''}>▶</button>
+          <button class="btn btn-sm btn-primary me-1" data-step-edit="${step.id}" title="编辑">✎</button>
+          <button class="btn btn-sm btn-secondary me-1" data-step-toggle="${step.id}" title="${isEnabled ? '禁用' : '启用'}">${isEnabled ? '禁' : '启'}</button>
+          <button class="btn btn-sm btn-info me-1" data-step-up="${step.id}" ${isFirst ? 'disabled' : ''} title="上移">↑</button>
+          <button class="btn btn-sm btn-info me-1" data-step-down="${step.id}" ${isLast ? 'disabled' : ''} title="下移">↓</button>
+          <button class="btn btn-sm btn-warning me-1" data-step-copy="${step.id}" title="复制">复</button>
+          <button class="btn btn-sm btn-danger" data-step-delete="${step.id}" title="删除">✕</button>
         </td>
       </tr>
     `;
@@ -195,7 +237,7 @@ function renderEditor() {
     <div class="border rounded p-3 mb-3">
       <button class="btn btn-sm btn-bt w-100" id="addStepBtn">添加步骤</button>
     </div>
-    <table class="table table-hover align-middle bt-table"><thead><tr><th>序号</th><th>步骤名称</th><th>配置摘要</th><th>项目</th><th>状态</th><th class="text-end">操作</th></tr></thead><tbody>${renderStepRows(workflow)}</tbody></table>
+    <table class="table table-hover align-middle bt-table wf-table"><thead><tr><th class="wf-col-order">序号</th><th class="wf-col-name">步骤名称</th><th class="wf-col-config">配置摘要</th><th class="wf-col-workdir">工作目录</th><th class="wf-col-project">项目</th><th class="wf-col-status">状态</th><th class="wf-col-actions text-end">操作</th></tr></thead><tbody>${renderStepRows(workflow)}</tbody></table>
   `;
   document.getElementById('saveWorkflowBtn').addEventListener('click', saveWorkflowName);
   document.getElementById('runWorkflowBtn').addEventListener('click', async () => {
@@ -205,6 +247,9 @@ function renderEditor() {
     try {
       await window.projectManager.workflows.execute(workflow.id, { onFailure: 'abort' });
       await loadWorkflows();
+    } catch (error) {
+      console.error('流程执行错误:', error);
+      alert('流程执行失败: ' + (error.message || error));
     } finally {
       workflowState.operating = false;
       workflowState.operatingAction = null;
@@ -255,9 +300,12 @@ async function addStep() {
   const workflow = workflowState.workflows.find((item) => item.id === workflowState.selectedWorkflowId);
   if (!workflow) return;
   
-  // 打开步骤类型选择模态框
+  // 清除编辑状态
+  workflowState.editingStepId = null;
   document.getElementById('stepTypeSelect').value = '';
+  document.getElementById('stepTypeSelect').disabled = false;
   document.getElementById('stepConfigForm').innerHTML = '';
+  document.querySelector('#stepTypeModal .modal-title').textContent = '添加步骤';
   bootstrap.Modal.getOrCreateInstance(document.getElementById('stepTypeModal')).show();
 }
 
@@ -276,18 +324,30 @@ function renderStepConfigForm(actionType) {
         <label class="form-label">命令</label>
         <textarea class="form-control form-control-sm" id="stepCommandInput" rows="3" placeholder="请输入命令"></textarea>
         <label class="form-label mt-2">工作目录</label>
-        <input class="form-control form-control-sm" id="stepWorkDirInput" placeholder="工作目录（可选）">
+        <div class="input-group">
+          <input class="form-control form-control-sm" id="stepWorkDirInput" placeholder="工作目录（可选）">
+          <button class="btn btn-sm btn-outline-secondary" type="button" id="selectWorkDirBtn">选择</button>
+        </div>
         <label class="form-label mt-2">超时时间（秒）</label>
         <input class="form-control form-control-sm" id="stepTimeoutInput" type="number" placeholder="超时时间（可选）">
       `;
     case 'script':
       return `
         <label class="form-label">脚本路径</label>
-        <input class="form-control form-control-sm" id="stepScriptPathInput" placeholder="脚本文件路径">
+        <div class="input-group">
+          <input class="form-control form-control-sm" id="stepScriptPathInput" placeholder="脚本文件路径">
+          <button class="btn btn-sm btn-outline-secondary" type="button" id="selectScriptPathBtn">选择</button>
+        </div>
         <label class="form-label mt-2">解释器（可选）</label>
-        <input class="form-control form-control-sm" id="stepInterpreterInput" placeholder="留空则自动检测">
+        <div class="input-group">
+          <input class="form-control form-control-sm" id="stepInterpreterInput" placeholder="留空则自动检测">
+          <button class="btn btn-sm btn-outline-secondary" type="button" id="selectInterpreterBtn">选择</button>
+        </div>
         <label class="form-label mt-2">工作目录</label>
-        <input class="form-control form-control-sm" id="stepWorkDirInput" placeholder="工作目录（可选）">
+        <div class="input-group">
+          <input class="form-control form-control-sm" id="stepWorkDirInput" placeholder="工作目录（可选）">
+          <button class="btn btn-sm btn-outline-secondary" type="button" id="selectWorkDirBtn">选择</button>
+        </div>
         <label class="form-label mt-2">超时时间（秒）</label>
         <input class="form-control form-control-sm" id="stepTimeoutInput" type="number" placeholder="超时时间（可选）">
       `;
@@ -323,11 +383,15 @@ function renderStepConfigForm(actionType) {
           <option value="delete">删除</option>
         </select>
         <label class="form-label mt-2">源路径</label>
-        <input class="form-control form-control-sm" id="stepSourcePathInput" placeholder="源文件/目录路径">
+        <div class="input-group">
+          <input class="form-control form-control-sm" id="stepSourcePathInput" placeholder="源文件/目录路径">
+          <button class="btn btn-sm btn-outline-secondary" type="button" id="selectSourcePathBtn">选择</button>
+        </div>
         <label class="form-label mt-2">目标路径</label>
-        <input class="form-control form-control-sm" id="stepTargetPathInput" placeholder="目标路径（复制/移动时需要）">
-        <label class="form-label mt-2">递归操作</label>
-        <input class="form-check-input" type="checkbox" id="stepRecursiveInput">
+        <div class="input-group">
+          <input class="form-control form-control-sm" id="stepTargetPathInput" placeholder="目标路径（复制/移动时需要）">
+          <button class="btn btn-sm btn-outline-secondary" type="button" id="selectTargetPathBtn">选择</button>
+        </div>
       `;
     case 'notification':
       return `
@@ -443,8 +507,7 @@ async function saveStep() {
       const fileConfig = {
         operation,
         source: sourcePath,
-        target: document.getElementById('stepTargetPathInput').value.trim() || '',
-        recursive: document.getElementById('stepRecursiveInput').checked
+        target: document.getElementById('stepTargetPathInput').value.trim() || ''
       };
       if ((operation === 'copy' || operation === 'move') && !fileConfig.target) {
         alert('请输入目标路径');
@@ -468,7 +531,19 @@ async function saveStep() {
       break;
   }
   
-  await window.projectManager.workflows.createStep(workflow.id, stepPayload);
+  if (workflowState.editingStepId) {
+    // 编辑模式：更新已有步骤
+    const existingStep = workflow.steps.find((s) => s.id === workflowState.editingStepId);
+    if (existingStep) {
+      stepPayload.step_order = existingStep.step_order;
+      stepPayload.enabled = existingStep.enabled;
+    }
+    await window.projectManager.workflows.updateStep(workflowState.editingStepId, stepPayload);
+    workflowState.editingStepId = null;
+  } else {
+    // 新建模式
+    await window.projectManager.workflows.createStep(workflow.id, stepPayload);
+  }
   bootstrap.Modal.getInstance(document.getElementById('stepTypeModal')).hide();
   await loadWorkflows();
 }
@@ -500,25 +575,37 @@ async function loadWorkflows() {
 async function refreshWorkflowRuntimeStatuses() {
   try {
     workflowState.runtimeStatuses = await window.projectManager.process.listStatuses();
-    if (workflowState.selectedWorkflowId) renderEditor();
   } catch (_error) {
     workflowState.runtimeStatuses = [];
   }
+  if (workflowState.selectedWorkflowId) renderEditor();
 }
 
 window.workflowsPage = {
   render: renderWorkflowPage,
   async mount() {
     document.getElementById('appContent').addEventListener('click', handleWorkflowClick);
+    document.getElementById('appContent').addEventListener('change', handleWorkflowChange);
     workflowState.unsubscribe = window.projectManager.workflows.onStatus((status) => { workflowState.statuses[status.workflowId] = status; refreshWorkflowRuntimeStatuses(); });
     await loadWorkflows();
   },
   unmount() {
     document.getElementById('appContent').removeEventListener('click', handleWorkflowClick);
+    document.getElementById('appContent').removeEventListener('change', handleWorkflowChange);
     workflowState.unsubscribe?.();
     workflowState.unsubscribe = null;
   }
 };
+
+function handleWorkflowChange(event) {
+  if (event.target.id === 'stepTypeSelect') {
+    const actionType = event.target.value;
+    if (actionType) {
+      document.getElementById('stepConfigForm').innerHTML = renderStepConfigForm(actionType);
+      bindSelectButtons(actionType);
+    }
+  }
+}
 
 function handleWorkflowClick(event) {
   const workflowButton = event.target.closest('[data-workflow-id]');
@@ -536,8 +623,12 @@ function handleWorkflowClick(event) {
     addWorkflow();
   }
   if (event.target.closest('#stepTypeSelect')) {
-    const actionType = event.target.value;
-    document.getElementById('stepConfigForm').innerHTML = renderStepConfigForm(actionType);
+    const select = event.target.closest('#stepTypeSelect');
+    const actionType = select.value;
+    if (actionType) {
+      document.getElementById('stepConfigForm').innerHTML = renderStepConfigForm(actionType);
+      bindSelectButtons(actionType);
+    }
   }
   if (event.target.closest('#saveStepBtn')) {
     saveStep();
@@ -545,6 +636,14 @@ function handleWorkflowClick(event) {
   if (event.target.closest('[data-step-toggle]')) {
     const stepId = Number(event.target.closest('[data-step-toggle]').dataset.stepToggle);
     toggleStepEnabled(stepId);
+  }
+  if (event.target.closest('[data-step-run]')) {
+    const stepId = Number(event.target.closest('[data-step-run]').dataset.stepRun);
+    runSingleStep(stepId);
+  }
+  if (event.target.closest('[data-step-edit]')) {
+    const stepId = Number(event.target.closest('[data-step-edit]').dataset.stepEdit);
+    editStep(stepId);
   }
   if (event.target.closest('[data-step-up]')) {
     const stepId = Number(event.target.closest('[data-step-up]').dataset.stepUp);
@@ -558,6 +657,68 @@ function handleWorkflowClick(event) {
     const stepId = Number(event.target.closest('[data-step-copy]').dataset.stepCopy);
     copyStep(stepId);
   }
+  if (event.target.closest('[data-step-log]')) {
+    event.preventDefault();
+    const workflowId = Number(event.target.closest('[data-step-log]').dataset.stepLog);
+    showWorkflowLog(workflowId);
+  }
+}
+
+function bindSelectButtons(actionType) {
+  // 工作目录选择
+  const workDirBtn = document.getElementById('selectWorkDirBtn');
+  if (workDirBtn) {
+    workDirBtn.onclick = async () => {
+      const path = await window.projectManager.workflows.selectDirectory();
+      if (path) {
+        document.getElementById('stepWorkDirInput').value = path;
+      }
+    };
+  }
+  
+  // 脚本路径选择
+  const scriptPathBtn = document.getElementById('selectScriptPathBtn');
+  if (scriptPathBtn) {
+    scriptPathBtn.onclick = async () => {
+      const path = await window.projectManager.workflows.selectFile();
+      if (path) {
+        document.getElementById('stepScriptPathInput').value = path;
+      }
+    };
+  }
+  
+  // 解释器选择
+  const interpreterBtn = document.getElementById('selectInterpreterBtn');
+  if (interpreterBtn) {
+    interpreterBtn.onclick = async () => {
+      const path = await window.projectManager.workflows.selectFile();
+      if (path) {
+        document.getElementById('stepInterpreterInput').value = path;
+      }
+    };
+  }
+  
+  // 源路径选择（支持文件和目录）
+  const sourcePathBtn = document.getElementById('selectSourcePathBtn');
+  if (sourcePathBtn) {
+    sourcePathBtn.onclick = async () => {
+      const path = await window.projectManager.workflows.selectPath();
+      if (path) {
+        document.getElementById('stepSourcePathInput').value = path;
+      }
+    };
+  }
+  
+  // 目标路径选择（支持文件和目录）
+  const targetPathBtn = document.getElementById('selectTargetPathBtn');
+  if (targetPathBtn) {
+    targetPathBtn.onclick = async () => {
+      const path = await window.projectManager.workflows.selectPath();
+      if (path) {
+        document.getElementById('stepTargetPathInput').value = path;
+      }
+    };
+  }
 }
 
 async function copyStep(stepId) {
@@ -567,7 +728,30 @@ async function copyStep(stepId) {
   const step = workflow.steps.find((item) => item.id === stepId);
   if (!step) return;
   
-  // 将当前步骤及之后的所有步骤序号+1
+  // 将当前步骤及之后的所有步骤序号+1（使用临时序号避免冲突）
+  const tempOrder = -1;
+  
+  // 先将所有受影响的步骤改为临时序号
+  for (let i = workflow.steps.length - 1; i >= step.step_order - 1; i--) {
+    const s = workflow.steps[i];
+    await window.projectManager.workflows.updateStep(s.id, {
+      step_order: tempOrder,
+      name: s.name,
+      command: s.command,
+      work_dir: s.work_dir,
+      timeout: s.timeout,
+      project_id: s.project_id,
+      action_type: s.action_type,
+      script_path: s.script_path,
+      http_config: s.http_config,
+      file_config: s.file_config,
+      interpreter: s.interpreter,
+      enabled: s.enabled,
+      delay_seconds: s.delay_seconds
+    });
+  }
+  
+  // 将所有步骤序号+1
   for (let i = workflow.steps.length - 1; i >= step.step_order - 1; i--) {
     const s = workflow.steps[i];
     await window.projectManager.workflows.updateStep(s.id, {
@@ -617,9 +801,12 @@ async function moveStepUp(stepId) {
   const currentStep = workflow.steps[stepIndex];
   const prevStep = workflow.steps[stepIndex - 1];
   
-  // 交换序号
+  // 使用临时序号避免冲突
+  const tempOrder = -1;
+  
+  // 先将当前步骤序号改为临时值
   await window.projectManager.workflows.updateStep(currentStep.id, {
-    step_order: currentStep.step_order - 1,
+    step_order: tempOrder,
     name: currentStep.name,
     command: currentStep.command,
     work_dir: currentStep.work_dir,
@@ -634,8 +821,9 @@ async function moveStepUp(stepId) {
     delay_seconds: currentStep.delay_seconds
   });
   
+  // 将上方步骤序号改为当前步骤原序号
   await window.projectManager.workflows.updateStep(prevStep.id, {
-    step_order: prevStep.step_order + 1,
+    step_order: currentStep.step_order,
     name: prevStep.name,
     command: prevStep.command,
     work_dir: prevStep.work_dir,
@@ -648,6 +836,23 @@ async function moveStepUp(stepId) {
     interpreter: prevStep.interpreter,
     enabled: prevStep.enabled,
     delay_seconds: prevStep.delay_seconds
+  });
+  
+  // 将当前步骤序号改为上方步骤原序号
+  await window.projectManager.workflows.updateStep(currentStep.id, {
+    step_order: prevStep.step_order,
+    name: currentStep.name,
+    command: currentStep.command,
+    work_dir: currentStep.work_dir,
+    timeout: currentStep.timeout,
+    project_id: currentStep.project_id,
+    action_type: currentStep.action_type,
+    script_path: currentStep.script_path,
+    http_config: currentStep.http_config,
+    file_config: currentStep.file_config,
+    interpreter: currentStep.interpreter,
+    enabled: currentStep.enabled,
+    delay_seconds: currentStep.delay_seconds
   });
   
   await loadWorkflows();
@@ -663,9 +868,12 @@ async function moveStepDown(stepId) {
   const currentStep = workflow.steps[stepIndex];
   const nextStep = workflow.steps[stepIndex + 1];
   
-  // 交换序号
+  // 使用临时序号避免冲突
+  const tempOrder = -1;
+  
+  // 先将当前步骤序号改为临时值
   await window.projectManager.workflows.updateStep(currentStep.id, {
-    step_order: currentStep.step_order + 1,
+    step_order: tempOrder,
     name: currentStep.name,
     command: currentStep.command,
     work_dir: currentStep.work_dir,
@@ -680,8 +888,9 @@ async function moveStepDown(stepId) {
     delay_seconds: currentStep.delay_seconds
   });
   
+  // 将下方步骤序号改为当前步骤原序号
   await window.projectManager.workflows.updateStep(nextStep.id, {
-    step_order: nextStep.step_order - 1,
+    step_order: currentStep.step_order,
     name: nextStep.name,
     command: nextStep.command,
     work_dir: nextStep.work_dir,
@@ -696,7 +905,158 @@ async function moveStepDown(stepId) {
     delay_seconds: nextStep.delay_seconds
   });
   
+  // 将当前步骤序号改为下方步骤原序号
+  await window.projectManager.workflows.updateStep(currentStep.id, {
+    step_order: nextStep.step_order,
+    name: currentStep.name,
+    command: currentStep.command,
+    work_dir: currentStep.work_dir,
+    timeout: currentStep.timeout,
+    project_id: currentStep.project_id,
+    action_type: currentStep.action_type,
+    script_path: currentStep.script_path,
+    http_config: currentStep.http_config,
+    file_config: currentStep.file_config,
+    interpreter: currentStep.interpreter,
+    enabled: currentStep.enabled,
+    delay_seconds: currentStep.delay_seconds
+  });
+  
   await loadWorkflows();
+}
+
+async function runSingleStep(stepId) {
+  // 添加加载动画
+  const btn = document.querySelector(`[data-step-run="${stepId}"]`);
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+  }
+  try {
+    await window.projectManager.workflows.executeStep(stepId);
+  } catch (error) {
+    alert('步骤执行失败: ' + (error.message || error));
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '▶';
+    }
+  }
+}
+
+async function showWorkflowLog(workflowId) {
+  try {
+    const history = await window.projectManager.terminal.getHistory(workflowId);
+    const logText = (history || [])
+      .map((item) => `[${item.type}] ${item.data}`)
+      .join('')
+      .trim() || '暂无日志输出';
+    
+    // 使用简单的模态框展示日志
+    let logModal = document.getElementById('wfLogModal');
+    if (!logModal) {
+      logModal = document.createElement('div');
+      logModal.id = 'wfLogModal';
+      logModal.className = 'modal fade';
+      logModal.tabIndex = -1;
+      logModal.innerHTML = `
+        <div class="modal-dialog modal-lg">
+          <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title">执行日志</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body"><pre id="wfLogContent" class="bg-dark text-light p-3 rounded" style="max-height:400px;overflow:auto;font-size:12px;white-space:pre-wrap;"></pre></div>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(logModal);
+    }
+    document.getElementById('wfLogContent').textContent = logText;
+    bootstrap.Modal.getOrCreateInstance(logModal).show();
+  } catch (error) {
+    alert('获取日志失败: ' + (error.message || error));
+  }
+}
+
+async function editStep(stepId) {
+  const workflow = workflowState.workflows.find((item) => item.id === workflowState.selectedWorkflowId);
+  if (!workflow) return;
+  const step = workflow.steps.find((item) => item.id === stepId);
+  if (!step) return;
+  
+  // 复用步骤类型模态框进行编辑
+  workflowState.editingStepId = stepId;
+  document.getElementById('stepTypeSelect').value = step.action_type;
+  document.getElementById('stepTypeSelect').disabled = true;
+  document.querySelector('#stepTypeModal .modal-title').textContent = '编辑步骤';
+  document.getElementById('stepConfigForm').innerHTML = renderStepConfigForm(step.action_type);
+  bindSelectButtons(step.action_type);
+  
+  // 填充已有数据
+  switch (step.action_type) {
+    case 'start_project':
+    case 'stop_project':
+      const projectSelect = document.getElementById('stepProjectSelect');
+      if (projectSelect) projectSelect.value = step.project_id || '';
+      break;
+    case 'command':
+      const cmdInput = document.getElementById('stepCommandInput');
+      if (cmdInput) cmdInput.value = step.command || '';
+      const cmdWorkDir = document.getElementById('stepWorkDirInput');
+      if (cmdWorkDir) cmdWorkDir.value = step.work_dir || '';
+      const cmdTimeout = document.getElementById('stepTimeoutInput');
+      if (cmdTimeout) cmdTimeout.value = step.timeout || '';
+      break;
+    case 'script':
+      const scriptInput = document.getElementById('stepScriptPathInput');
+      if (scriptInput) scriptInput.value = step.script_path || '';
+      const interpreterInput = document.getElementById('stepInterpreterInput');
+      if (interpreterInput) interpreterInput.value = step.interpreter || '';
+      const scriptWorkDir = document.getElementById('stepWorkDirInput');
+      if (scriptWorkDir) scriptWorkDir.value = step.work_dir || '';
+      const scriptTimeout = document.getElementById('stepTimeoutInput');
+      if (scriptTimeout) scriptTimeout.value = step.timeout || '';
+      break;
+    case 'delay':
+      const delayInput = document.getElementById('stepDelayInput');
+      if (delayInput) delayInput.value = step.delay_seconds || '';
+      break;
+    case 'http_request':
+      try {
+        const httpConfig = step.http_config ? JSON.parse(step.http_config) : {};
+        const urlInput = document.getElementById('stepUrlInput');
+        if (urlInput) urlInput.value = httpConfig.url || '';
+        const methodSelect = document.getElementById('stepMethodSelect');
+        if (methodSelect) methodSelect.value = httpConfig.method || 'GET';
+        const headersInput = document.getElementById('stepHeadersInput');
+        if (headersInput) headersInput.value = httpConfig.headers || '';
+        const bodyInput = document.getElementById('stepBodyInput');
+        if (bodyInput) bodyInput.value = httpConfig.body || '';
+        const httpTimeout = document.getElementById('stepTimeoutInput');
+        if (httpTimeout) httpTimeout.value = step.timeout || '';
+      } catch {}
+      break;
+    case 'file_operation':
+      try {
+        const fileConfig = step.file_config ? JSON.parse(step.file_config) : {};
+        const opSelect = document.getElementById('stepFileOperationSelect');
+        if (opSelect) opSelect.value = fileConfig.operation || 'copy';
+        const sourceInput = document.getElementById('stepSourcePathInput');
+        if (sourceInput) sourceInput.value = fileConfig.source || '';
+        const targetInput = document.getElementById('stepTargetPathInput');
+        if (targetInput) targetInput.value = fileConfig.target || '';
+      } catch {}
+      break;
+    case 'notification':
+      try {
+        const notifConfig = step.http_config ? JSON.parse(step.http_config) : {};
+        const msgInput = document.getElementById('stepMessageInput');
+        if (msgInput) msgInput.value = notifConfig.message || '';
+        const channelSelect = document.getElementById('stepChannelSelect');
+        if (channelSelect) channelSelect.value = notifConfig.channel || 'log';
+      } catch {}
+      break;
+  }
+  
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('stepTypeModal')).show();
 }
 
 async function toggleStepEnabled(stepId) {
@@ -706,7 +1066,10 @@ async function toggleStepEnabled(stepId) {
   const step = workflow.steps.find((item) => item.id === stepId);
   if (!step) return;
   
-  const newEnabled = step.enabled === false ? true : false;
+  // enabled 在数据库中是整数 1/0，需要正确判断
+  const currentEnabled = step.enabled === 0 ? false : true;
+  const newEnabled = !currentEnabled;
+  
   await window.projectManager.workflows.updateStep(stepId, {
     step_order: step.step_order,
     name: step.name,
@@ -719,7 +1082,7 @@ async function toggleStepEnabled(stepId) {
     http_config: step.http_config,
     file_config: step.file_config,
     interpreter: step.interpreter,
-    enabled: newEnabled,
+    enabled: newEnabled ? 1 : 0,
     delay_seconds: step.delay_seconds
   });
   await loadWorkflows();

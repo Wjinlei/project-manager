@@ -49,7 +49,12 @@ function createRepositories(db) {
       'action_type',
       'health_check_type',
       'health_check_target',
-      'delay_seconds'
+      'delay_seconds',
+      'script_path',
+      'http_config',
+      'file_config',
+      'interpreter',
+      'enabled'
     ]),
     scheduledTasks: new Repository(db, 'scheduled_tasks', [
       'name',

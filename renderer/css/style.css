@@ -401,6 +401,59 @@ body {
   color: #dc3545;
 }
 
+.status-text.success {
+  color: #198754;
+}
+
+.status-text.failed {
+  color: #dc3545;
+}
+
+.status-text.skipped {
+  color: #6c757d;
+}
+
+/* 流程详情表格固定列宽 */
+.wf-table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.wf-table .wf-col-order { width: 40px; }
+.wf-table .wf-col-name { width: 140px; }
+.wf-table .wf-col-config { width: 160px; }
+.wf-table .wf-col-workdir { width: 140px; }
+.wf-table .wf-col-project { width: 90px; }
+.wf-table .wf-col-status { width: 80px; }
+.wf-table .wf-col-actions { width: 240px; }
+
+.wf-table td,
+.wf-table th {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.text-truncate-cell {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.wf-table .btn-sm {
+  padding: 2px 6px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+/* 流程详情表格容器横向滚动 */
+.workflow-editor {
+  overflow-x: auto;
+}
+
 .terminal-toolbar {
   display: flex;
   align-items: center;

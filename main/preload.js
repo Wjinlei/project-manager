@@ -66,8 +66,12 @@ contextBridge.exposeInMainWorld('projectManager', {
     updateStep: (stepId, payload) => ipcRenderer.invoke('workflow-steps:update', stepId, payload),
     deleteStep: (stepId) => ipcRenderer.invoke('workflow-steps:delete', stepId),
     execute: (workflowId, options) => ipcRenderer.invoke('workflows:execute', workflowId, options),
+    executeStep: (stepId) => ipcRenderer.invoke('workflows:execute-step', stepId),
     stop: (workflowId) => ipcRenderer.invoke('workflows:stop', workflowId),
     status: (workflowId) => ipcRenderer.invoke('workflows:status', workflowId),
+    selectFile: () => ipcRenderer.invoke('workflow:select-file'),
+    selectDirectory: () => ipcRenderer.invoke('workflow:select-directory'),
+    selectPath: () => ipcRenderer.invoke('workflow:select-path'),
     onStatus: (callback) => {
       const listener = (_event, status) => callback(status);
       ipcRenderer.on('workflow:status', listener);
