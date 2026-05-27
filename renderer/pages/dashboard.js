@@ -44,12 +44,12 @@ function renderDashboardRows() {
   return dashboardState.projects.map((project) => {
     const runtime = dashboardRuntimeOf(project.id);
     const isRunning = Boolean(runtime?.running);
-    const status = isRunning ? 'running' : 'stopped';
+    const status = isRunning ? '运行中' : '已停止';
     return `
       <tr>
         <td class="project-cell" title="${dashboardEscape(project.name)}">${dashboardEscape(project.name)}</td>
         <td class="project-cell" title="${dashboardEscape(project.type)}"><span class="badge text-bg-light text-dark">${dashboardEscape(project.type)}</span></td>
-        <td class="project-cell" title="${dashboardEscape(status)}"><span class="status-dot ${status}"></span><span class="status-text ${status}">${dashboardEscape(status)}</span></td>
+        <td class="project-cell" title="${dashboardEscape(status)}"><span class="status-dot ${isRunning ? 'running' : 'stopped'}"></span><span class="status-text ${isRunning ? 'running' : 'stopped'}">${dashboardEscape(status)}</span></td>
         <td class="project-path" title="${dashboardEscape(project.path)}">${dashboardEscape(project.path)}</td>
       </tr>
     `;

@@ -197,11 +197,11 @@ function renderProjectRows() {
     const runtime = runtimeOf(project.id);
     const isRunning = Boolean(runtime?.running);
     const isOperating = isProjectOperating(project.id);
-    const status = isRunning ? 'running' : 'stopped';
+    const status = isRunning ? '运行中' : '已停止';
     const sourceText = runtime?.source === 'external' ? '外部' : runtime?.source === 'managed' ? '托管' : '';
     const operatingAction = isOperating ? projectsState.operatingAction : null;
     const operatingText = actionText(operatingAction, '处理中...');
-    const statusClass = status === 'running' ? 'running' : status === 'error' ? 'error' : 'stopped';
+    const statusClass = isRunning ? 'running' : 'stopped';
     const updatedAt = formatLocalTime(project.updated_at || project.created_at || '');
     const projectTags = getProjectTags(project.id);
     const tagsHtml = projectTags.length > 0 
