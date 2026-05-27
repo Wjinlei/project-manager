@@ -19,7 +19,8 @@ let projectsState = {
   tags: [],
   availableTags: [],
   selectedTagIds: [],
-  tempSelectedTagIds: []
+  tempSelectedTagIds: [],
+  loading: false
 };
 
 function escapeHtml(value) {
@@ -188,6 +189,10 @@ function confirmTagSelection() {
 }
 
 function renderProjectRows() {
+  if (projectsState.loading) {
+    return '<tr><td colspan="8" class="py-5"><div class="skeleton" style="height: 40px;"></div></td></tr>';
+  }
+  
   const projects = getFilteredProjects();
   if (projects.length === 0) {
     return '<tr><td colspan="8" class="text-center text-muted py-5">暂无项目，请先添加本地目录。</td></tr>';
@@ -356,19 +361,32 @@ async function refreshTable() {
 }
 
 async function loadProjects() {
-  projectsState.projects = await window.projectManager.projects.list();
-  projectsState.availableTags = await window.projectManager.tags.list();
+  projectsState.loading = true;
+  renderProjectListView();
   
-  const allTags = [];
-  for (const project of projectsState.projects) {
-    const tags = await window.projectManager.projectTags.list(project.id);
-    tags.forEach((tag) => {
-      allTags.push({ ...tag, projectId: project.id });
-    });
+  try {
+    projectsState.projects = await window.projectManager.projects.list();
+    projectsState.availableTags = await window.projectManager.tags.list();
+    
+    const allTags = [];
+    for (const project of projectsState.projects) {
+      const tags = await window.projectManager.projectTags.list(project.id);
+      tags.forEach((tag) => {
+        allTags.push({ ...tag, projectId: project.id });
+      });
+    }
+    projectsState.tags = allTags;
+    
+    await refreshTable();
+  } catch (error) {
+    console.error('加载项目失败:', error);
+    projectsState.projects = [];
+    projectsState.tags = [];
+    projectsState.availableTags = [];
+  } finally {
+    projectsState.loading = false;
+    renderProjectListView();
   }
-  projectsState.tags = allTags;
-  
-  await refreshTable();
 }
 
 async function openProjectModal(project) {

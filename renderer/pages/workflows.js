@@ -1,4 +1,4 @@
-﻿let workflowState = { projects: [], runtimeStatuses: [], workflows: [], selectedWorkflowId: null, unsubscribe: null, statuses: {}, operating: false, operatingAction: null };
+﻿let workflowState = { projects: [], runtimeStatuses: [], workflows: [], selectedWorkflowId: null, unsubscribe: null, statuses: {}, operating: false, operatingAction: null, loading: false };
 
 function wfEscape(value) {
   return String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;');
@@ -45,6 +45,10 @@ function renderWorkflowPage() {
 }
 
 function renderWorkflowList() {
+  if (workflowState.loading) {
+    return '<div class="border rounded p-3"><div class="skeleton" style="height: 40px;"></div></div>';
+  }
+  
   if (workflowState.workflows.length === 0) return '<div class="text-muted small p-3 border rounded">暂无流程</div>';
   return workflowState.workflows.map((workflow) => `
     <button class="list-group-item list-group-item-action ${workflowState.selectedWorkflowId === workflow.id ? 'active' : ''}" data-workflow-id="${workflow.id}">
@@ -176,13 +180,25 @@ async function addStep() {
 }
 
 async function loadWorkflows() {
-  const [projects, workflows] = await Promise.all([
-    window.projectManager.projects.list(),
-    window.projectManager.workflows.list()
-  ]);
-  workflowState.projects = projects;
-  workflowState.workflows = workflows;
+  workflowState.loading = true;
   document.getElementById('workflowList').innerHTML = renderWorkflowList();
+  
+  try {
+    const [projects, workflows] = await Promise.all([
+      window.projectManager.projects.list(),
+      window.projectManager.workflows.list()
+    ]);
+    workflowState.projects = projects;
+    workflowState.workflows = workflows;
+  } catch (error) {
+    console.error('加载流程失败:', error);
+    workflowState.projects = [];
+    workflowState.workflows = [];
+  } finally {
+    workflowState.loading = false;
+    document.getElementById('workflowList').innerHTML = renderWorkflowList();
+  }
+  
   if (workflowState.selectedWorkflowId) renderEditor();
   refreshWorkflowRuntimeStatuses();
 }

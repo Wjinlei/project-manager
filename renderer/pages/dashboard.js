@@ -1,4 +1,4 @@
-let dashboardState = { projects: [], runtimeStatuses: [], workflows: [] };
+let dashboardState = { projects: [], runtimeStatuses: [], workflows: [], loading: false };
 
 function renderDashboardPage() {
   return `
@@ -38,6 +38,10 @@ function dashboardRuntimeOf(projectId) {
 }
 
 function renderDashboardRows() {
+  if (dashboardState.loading) {
+    return '<tr><td colspan="4" class="py-4"><div class="skeleton" style="height: 40px;"></div></td></tr>';
+  }
+  
   if (dashboardState.projects.length === 0) {
     return '<tr><td colspan="4" class="text-center text-muted py-4">暂无项目</td></tr>';
   }
@@ -57,15 +61,28 @@ function renderDashboardRows() {
 }
 
 async function loadDashboard() {
-  dashboardState.projects = await window.projectManager.projects.list();
-  dashboardState.runtimeStatuses = await window.projectManager.process.listStatuses();
-  dashboardState.workflows = await window.projectManager.workflows.list();
+  dashboardState.loading = true;
+  document.getElementById('dashboardProjectRows').innerHTML = renderDashboardRows();
+  
+  try {
+    dashboardState.projects = await window.projectManager.projects.list();
+    dashboardState.runtimeStatuses = await window.projectManager.process.listStatuses();
+    dashboardState.workflows = await window.projectManager.workflows.list();
+  } catch (error) {
+    console.error('加载仪表盘失败:', error);
+    dashboardState.projects = [];
+    dashboardState.runtimeStatuses = [];
+    dashboardState.workflows = [];
+  } finally {
+    dashboardState.loading = false;
+    document.getElementById('dashboardProjectRows').innerHTML = renderDashboardRows();
+  }
+  
   const runningCount = dashboardState.projects.filter((project) => Boolean(dashboardRuntimeOf(project.id)?.running)).length;
   document.getElementById('dashboardProjectCount').textContent = dashboardState.projects.length;
   document.getElementById('dashboardRunningCount').textContent = runningCount;
   document.getElementById('dashboardStoppedCount').textContent = Math.max(0, dashboardState.projects.length - runningCount);
   document.getElementById('dashboardWorkflowCount').textContent = dashboardState.workflows.length;
-  document.getElementById('dashboardProjectRows').innerHTML = renderDashboardRows();
 }
 
 window.dashboardPage = {

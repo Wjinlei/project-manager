@@ -1,7 +1,8 @@
 let configsState = {
   projects: [],
   configs: [],
-  editingId: null
+  editingId: null,
+  loading: false
 };
 
 function configEscape(value) {
@@ -14,6 +15,10 @@ function configEscape(value) {
 }
 
 function renderConfigRows() {
+  if (configsState.loading) {
+    return '<tr><td colspan="6" class="py-4"><div class="skeleton" style="height: 40px;"></div></td></tr>';
+  }
+  
   if (configsState.configs.length === 0) {
     return '<tr><td colspan="6" class="text-center text-muted py-4">暂无配置，请添加配置文件。</td></tr>';
   }
@@ -86,9 +91,20 @@ function renderConfigsPage() {
 }
 
 async function loadConfigsPage() {
-  configsState.projects = await window.projectManager.projects.list();
-  configsState.configs = await window.projectManager.configs.listAll();
+  configsState.loading = true;
   document.getElementById('configManageTableBody').innerHTML = renderConfigRows();
+  
+  try {
+    configsState.projects = await window.projectManager.projects.list();
+    configsState.configs = await window.projectManager.configs.listAll();
+  } catch (error) {
+    console.error('加载配置失败:', error);
+    configsState.projects = [];
+    configsState.configs = [];
+  } finally {
+    configsState.loading = false;
+    document.getElementById('configManageTableBody').innerHTML = renderConfigRows();
+  }
 }
 
 function fillProjectSelect(selectedId) {

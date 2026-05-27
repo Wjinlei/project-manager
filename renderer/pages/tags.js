@@ -1,6 +1,7 @@
 let tagsState = {
   tags: [],
-  editingId: null
+  editingId: null,
+  loading: false
 };
 
 const TAG_COLORS = [
@@ -74,6 +75,10 @@ function renderTagPage() {
 }
 
 function renderTagRows() {
+  if (tagsState.loading) {
+    return '<tr><td colspan="4" class="py-5"><div class="skeleton" style="height: 40px;"></div></td></tr>';
+  }
+  
   if (tagsState.tags.length === 0) {
     return '<tr><td colspan="4" class="text-center text-muted py-5">暂无标签，请先添加标签。</td></tr>';
   }
@@ -105,6 +110,9 @@ function getContrastColor(hexColor) {
 }
 
 async function loadTags() {
+  tagsState.loading = true;
+  document.getElementById('tagTableBody').innerHTML = renderTagRows();
+  
   try {
     const tags = await window.projectManager.tags.list();
     const projects = await window.projectManager.projects.list();
@@ -129,8 +137,10 @@ async function loadTags() {
   } catch (error) {
     console.error('加载标签失败:', error);
     tagsState.tags = [];
+  } finally {
+    tagsState.loading = false;
+    document.getElementById('tagTableBody').innerHTML = renderTagRows();
   }
-  document.getElementById('tagTableBody').innerHTML = renderTagRows();
 }
 
 async function openTagModal(tag) {
