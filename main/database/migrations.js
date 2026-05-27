@@ -77,22 +77,24 @@ function runMigrations(db) {
       FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
       UNIQUE(workflow_id, step_order)
     );
+  `);
 
-    // 为现有数据库添加新字段（安全迁移，忽略已存在的字段错误）
-    const addColumn = (sql) => {
-      try {
-        db.exec(sql);
-      } catch (e) {
-        // 字段已存在，忽略错误
-      }
-    };
+  // 为现有数据库添加新字段（安全迁移，忽略已存在的字段错误）
+  const addColumn = (sql) => {
+    try {
+      db.exec(sql);
+    } catch (e) {
+      // 字段已存在，忽略错误
+    }
+  };
 
-    addColumn('ALTER TABLE workflow_steps ADD COLUMN script_path TEXT');
-    addColumn('ALTER TABLE workflow_steps ADD COLUMN http_config TEXT');
-    addColumn('ALTER TABLE workflow_steps ADD COLUMN file_config TEXT');
-    addColumn('ALTER TABLE workflow_steps ADD COLUMN interpreter TEXT');
-    addColumn('ALTER TABLE workflow_steps ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1');
+  addColumn('ALTER TABLE workflow_steps ADD COLUMN script_path TEXT');
+  addColumn('ALTER TABLE workflow_steps ADD COLUMN http_config TEXT');
+  addColumn('ALTER TABLE workflow_steps ADD COLUMN file_config TEXT');
+  addColumn('ALTER TABLE workflow_steps ADD COLUMN interpreter TEXT');
+  addColumn('ALTER TABLE workflow_steps ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1');
 
+  db.exec(`
     CREATE TABLE IF NOT EXISTS scheduled_tasks (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
