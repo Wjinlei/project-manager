@@ -68,10 +68,42 @@ function runMigrations(db) {
       health_check_type TEXT,
       health_check_target TEXT,
       delay_seconds INTEGER NOT NULL DEFAULT 0,
+      script_path TEXT,
+      http_config TEXT,
+      file_config TEXT,
+      interpreter TEXT,
+      enabled INTEGER NOT NULL DEFAULT 1,
       FOREIGN KEY (workflow_id) REFERENCES workflows(id) ON DELETE CASCADE,
       FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
       UNIQUE(workflow_id, step_order)
     );
+
+    -- 为现有数据库添加新字段（安全迁移，忽略已存在的字段错误）
+    try {
+      db.exec('ALTER TABLE workflow_steps ADD COLUMN script_path TEXT');
+    } catch (e) {
+      // 字段已存在，忽略错误
+    }
+    try {
+      db.exec('ALTER TABLE workflow_steps ADD COLUMN http_config TEXT');
+    } catch (e) {
+      // 字段已存在，忽略错误
+    }
+    try {
+      db.exec('ALTER TABLE workflow_steps ADD COLUMN file_config TEXT');
+    } catch (e) {
+      // 字段已存在，忽略错误
+    }
+    try {
+      db.exec('ALTER TABLE workflow_steps ADD COLUMN interpreter TEXT');
+    } catch (e) {
+      // 字段已存在，忽略错误
+    }
+    try {
+      db.exec('ALTER TABLE workflow_steps ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1');
+    } catch (e) {
+      // 字段已存在，忽略错误
+    }
 
     CREATE TABLE IF NOT EXISTS scheduled_tasks (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
