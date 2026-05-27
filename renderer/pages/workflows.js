@@ -137,7 +137,7 @@ function getStepConfigSummary(step) {
 }
 
 function renderStepRows(workflow) {
-  if (!workflow.steps.length) return '<tr><td colspan="8" class="text-center text-muted py-4">暂无步骤，请添加步骤。</td></tr>';
+  if (!workflow.steps.length) return '<tr><td colspan="7" class="text-center text-muted py-4">暂无步骤，请添加步骤。</td></tr>';
   const status = workflowState.statuses[workflow.id];
   return workflow.steps.map((step, index) => {
     const stepStatus = status?.steps?.find((item) => item.id === step.id)?.status;
@@ -181,7 +181,6 @@ function renderStepRows(workflow) {
     const isEnabled = step.enabled !== 0 && step.enabled !== false;
     const isFirst = index === 0;
     const isLast = index === workflow.steps.length - 1;
-    const showWorkDir = step.action_type === 'command' || step.action_type === 'script';
     
     return `
       <tr class="${isEnabled ? '' : 'table-secondary'}" draggable="true" data-step-id="${step.id}">
@@ -193,9 +192,6 @@ function renderStepRows(workflow) {
         </td>
         <td class="wf-col-config" title="${wfEscape(getStepConfigSummary(step))}">
           <div class="text-truncate-cell small text-muted">${getStepConfigSummary(step)}</div>
-        </td>
-        <td class="wf-col-workdir" title="${wfEscape(showWorkDir ? (step.work_dir || '-') : '-')}">
-          <div class="text-truncate-cell small">${showWorkDir ? wfEscape(step.work_dir || '-') : '-'}</div>
         </td>
         <td class="wf-col-project" title="${wfEscape(workflowProjectName(step.project_id))}">
           <span class="text-truncate-cell">${wfEscape(workflowProjectName(step.project_id))}</span>
@@ -280,7 +276,7 @@ function renderEditor() {
     <div class="border rounded p-3 mb-3">
       <button class="btn btn-sm btn-bt w-100" id="addStepBtn">添加步骤</button>
     </div>
-    <table class="table table-hover align-middle bt-table wf-table"><thead><tr><th class="wf-col-order">序号</th><th class="wf-col-name">步骤名称</th><th class="wf-col-config">配置摘要</th><th class="wf-col-workdir">工作目录</th><th class="wf-col-project">项目</th><th class="wf-col-status">状态</th><th class="wf-col-actions text-end">操作</th></tr></thead><tbody>${renderStepRows(workflow)}</tbody></table>
+    <table class="table table-hover align-middle bt-table wf-table"><thead><tr><th class="wf-col-order">序号</th><th class="wf-col-name">步骤名称</th><th class="wf-col-config">配置摘要</th><th class="wf-col-project">项目</th><th class="wf-col-status">状态</th><th class="wf-col-actions text-end">操作</th></tr></thead><tbody>${renderStepRows(workflow)}</tbody></table>
   `;
   document.getElementById('saveWorkflowBtn').addEventListener('click', saveWorkflowName);
   document.getElementById('runWorkflowBtn').addEventListener('click', async () => {

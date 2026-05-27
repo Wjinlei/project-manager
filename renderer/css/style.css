@@ -419,13 +419,12 @@ body {
   width: 100%;
 }
 
-.wf-table .wf-col-order { width: 40px; }
-.wf-table .wf-col-name { width: 140px; }
-.wf-table .wf-col-config { width: 160px; }
-.wf-table .wf-col-workdir { width: 140px; }
-.wf-table .wf-col-project { width: 90px; }
-.wf-table .wf-col-status { width: 80px; }
-.wf-table .wf-col-actions { width: 180px; }
+.wf-table .wf-col-order { width: 50px; }
+.wf-table .wf-col-name { width: 120px; }
+.wf-table .wf-col-config { width: auto; }
+.wf-table .wf-col-project { width: 200px; }
+.wf-table .wf-col-status { width: 100px; }
+.wf-table .wf-col-actions { width: 170px; }
 
 .wf-table td,
 .wf-table th {
