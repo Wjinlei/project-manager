@@ -96,32 +96,17 @@ function deleteStep(stepId) {
   return getRepositories().workflowSteps.delete(Number(stepId));
 }
 
-function reorderStep(stepId, direction) {
+function reorderSteps(workflowId, stepIds) {
   const repositories = getRepositories();
-  const step = repositories.workflowSteps.findById(Number(stepId));
-  if (!step) throw new Error('步骤不存在');
-  
-  const workflowId = step.workflow_id;
-  const steps = listSteps(workflowId);
-  const currentIndex = steps.findIndex((s) => s.id === Number(stepId));
-  
-  if (direction === 'up' && currentIndex <= 0) {
-    throw new Error('已经是第一个步骤');
-  }
-  if (direction === 'down' && currentIndex >= steps.length - 1) {
-    throw new Error('已经是最后一个步骤');
-  }
-  
-  const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
-  const targetStep = steps[targetIndex];
-  
-  // 交换序号
-  const currentOrder = step.step_order;
-  const targetOrder = targetStep.step_order;
-  
-  repositories.workflowSteps.update(Number(stepId), { step_order: targetOrder });
-  repositories.workflowSteps.update(targetStep.id, { step_order: currentOrder });
-  
+  // stepIds 是按新顺序排列的步骤ID数组
+  // 先全部设为负数临时序号避免唯一约束冲突
+  stepIds.forEach((id, index) => {
+    repositories.workflowSteps.update(Number(id), { step_order: -(index + 1) });
+  });
+  // 再设为正确序号
+  stepIds.forEach((id, index) => {
+    repositories.workflowSteps.update(Number(id), { step_order: index + 1 });
+  });
   return listSteps(workflowId);
 }
 
@@ -641,7 +626,7 @@ function registerWorkflowManagerIpc(ipcMain, getMainWindow) {
   ipcMain.handle('workflow-steps:create', (_event, workflowId, payload) => createStep(workflowId, payload));
   ipcMain.handle('workflow-steps:update', (_event, stepId, payload) => updateStep(stepId, payload));
   ipcMain.handle('workflow-steps:delete', (_event, stepId) => deleteStep(stepId));
-  ipcMain.handle('workflow-steps:reorder', (_event, stepId, direction) => reorderStep(stepId, direction));
+  ipcMain.handle('workflow-steps:reorder', (_event, workflowId, stepIds) => reorderSteps(workflowId, stepIds));
   ipcMain.handle('workflows:execute', (_event, workflowId, options) => executeWorkflow(workflowId, options));
   ipcMain.handle('workflows:execute-step', (_event, stepId) => executeStep(stepId));
   ipcMain.handle('workflows:stop', (_event, workflowId) => stopWorkflow(workflowId));
@@ -689,7 +674,7 @@ module.exports = {
   createStep,
   updateStep,
   deleteStep,
-  reorderStep,
+  reorderSteps,
   executeWorkflow,
   stopWorkflow,
   getWorkflowStatus,

@@ -184,8 +184,8 @@ function renderStepRows(workflow) {
     const showWorkDir = step.action_type === 'command' || step.action_type === 'script';
     
     return `
-      <tr class="${isEnabled ? '' : 'table-secondary'}">
-        <td class="wf-col-order">${step.step_order}</td>
+      <tr class="${isEnabled ? '' : 'table-secondary'}" draggable="true" data-step-id="${step.id}">
+        <td class="wf-col-order"><span class="drag-handle" title="拖拽排序">☰</span> ${step.step_order}</td>
         <td class="wf-col-name" title="${wfEscape(step.name)}">
           <span class="me-1">${getStepTypeIcon(step.action_type)}</span>
           <span class="text-truncate-cell">${wfEscape(step.name)}</span>
@@ -205,14 +205,57 @@ function renderStepRows(workflow) {
           <button class="btn btn-sm btn-success me-1" data-step-run="${step.id}" title="执行" ${!isEnabled ? 'disabled' : ''}>▶</button>
           <button class="btn btn-sm btn-primary me-1" data-step-edit="${step.id}" title="编辑">✎</button>
           <button class="btn btn-sm btn-secondary me-1" data-step-toggle="${step.id}" title="${isEnabled ? '禁用' : '启用'}">${isEnabled ? '禁' : '启'}</button>
-          <button class="btn btn-sm btn-info me-1" data-step-up="${step.id}" ${isFirst ? 'disabled' : ''} title="上移">↑</button>
-          <button class="btn btn-sm btn-info me-1" data-step-down="${step.id}" ${isLast ? 'disabled' : ''} title="下移">↓</button>
           <button class="btn btn-sm btn-warning me-1" data-step-copy="${step.id}" title="复制">复</button>
           <button class="btn btn-sm btn-danger" data-step-delete="${step.id}" title="删除">✕</button>
         </td>
       </tr>
     `;
   }).join('');
+}
+
+function bindDragAndDrop() {
+  const tbody = document.querySelector('.wf-table tbody');
+  if (!tbody) return;
+  let dragRow = null;
+
+  tbody.addEventListener('dragstart', (e) => {
+    dragRow = e.target.closest('tr[data-step-id]');
+    if (!dragRow) return;
+    dragRow.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', dragRow.dataset.stepId);
+  });
+
+  tbody.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const targetRow = e.target.closest('tr[data-step-id]');
+    if (!targetRow || targetRow === dragRow) return;
+    const rows = [...tbody.querySelectorAll('tr[data-step-id]')];
+    const dragIndex = rows.indexOf(dragRow);
+    const targetIndex = rows.indexOf(targetRow);
+    if (dragIndex < targetIndex) {
+      tbody.insertBefore(dragRow, targetRow.nextSibling);
+    } else {
+      tbody.insertBefore(dragRow, targetRow);
+    }
+  });
+
+  tbody.addEventListener('dragend', async () => {
+    if (dragRow) dragRow.classList.remove('dragging');
+    dragRow = null;
+    // 保存新顺序
+    const rows = [...tbody.querySelectorAll('tr[data-step-id]')];
+    const stepIds = rows.map((row) => Number(row.dataset.stepId));
+    const workflowId = workflowState.selectedWorkflowId;
+    try {
+      await window.projectManager.workflows.reorderSteps(workflowId, stepIds);
+      await loadWorkflows();
+    } catch (error) {
+      console.error('排序失败:', error);
+      await loadWorkflows();
+    }
+  });
 }
 
 function renderEditor() {
@@ -272,6 +315,7 @@ function renderEditor() {
   document.getElementById('deleteWorkflowBtn').addEventListener('click', async () => { if (confirm('确定删除该流程吗？')) { await window.projectManager.workflows.delete(workflow.id); workflowState.selectedWorkflowId = null; await loadWorkflows(); } });
   document.getElementById('addStepBtn').addEventListener('click', addStep);
   document.querySelectorAll('[data-step-delete]').forEach((button) => button.addEventListener('click', async () => { await window.projectManager.workflows.deleteStep(Number(button.dataset.stepDelete)); await loadWorkflows(); }));
+  bindDragAndDrop();
 }
 
 async function addWorkflow() {
@@ -645,14 +689,6 @@ function handleWorkflowClick(event) {
     const stepId = Number(event.target.closest('[data-step-edit]').dataset.stepEdit);
     editStep(stepId);
   }
-  if (event.target.closest('[data-step-up]')) {
-    const stepId = Number(event.target.closest('[data-step-up]').dataset.stepUp);
-    moveStepUp(stepId);
-  }
-  if (event.target.closest('[data-step-down]')) {
-    const stepId = Number(event.target.closest('[data-step-down]').dataset.stepDown);
-    moveStepDown(stepId);
-  }
   if (event.target.closest('[data-step-copy]')) {
     const stepId = Number(event.target.closest('[data-step-copy]').dataset.stepCopy);
     copyStep(stepId);
@@ -791,139 +827,6 @@ async function copyStep(stepId) {
   await loadWorkflows();
 }
 
-async function moveStepUp(stepId) {
-  const workflow = workflowState.workflows.find((item) => item.id === workflowState.selectedWorkflowId);
-  if (!workflow) return;
-  
-  const stepIndex = workflow.steps.findIndex((item) => item.id === stepId);
-  if (stepIndex <= 0) return;
-  
-  const currentStep = workflow.steps[stepIndex];
-  const prevStep = workflow.steps[stepIndex - 1];
-  
-  // 使用临时序号避免冲突
-  const tempOrder = -1;
-  
-  // 先将当前步骤序号改为临时值
-  await window.projectManager.workflows.updateStep(currentStep.id, {
-    step_order: tempOrder,
-    name: currentStep.name,
-    command: currentStep.command,
-    work_dir: currentStep.work_dir,
-    timeout: currentStep.timeout,
-    project_id: currentStep.project_id,
-    action_type: currentStep.action_type,
-    script_path: currentStep.script_path,
-    http_config: currentStep.http_config,
-    file_config: currentStep.file_config,
-    interpreter: currentStep.interpreter,
-    enabled: currentStep.enabled,
-    delay_seconds: currentStep.delay_seconds
-  });
-  
-  // 将上方步骤序号改为当前步骤原序号
-  await window.projectManager.workflows.updateStep(prevStep.id, {
-    step_order: currentStep.step_order,
-    name: prevStep.name,
-    command: prevStep.command,
-    work_dir: prevStep.work_dir,
-    timeout: prevStep.timeout,
-    project_id: prevStep.project_id,
-    action_type: prevStep.action_type,
-    script_path: prevStep.script_path,
-    http_config: prevStep.http_config,
-    file_config: prevStep.file_config,
-    interpreter: prevStep.interpreter,
-    enabled: prevStep.enabled,
-    delay_seconds: prevStep.delay_seconds
-  });
-  
-  // 将当前步骤序号改为上方步骤原序号
-  await window.projectManager.workflows.updateStep(currentStep.id, {
-    step_order: prevStep.step_order,
-    name: currentStep.name,
-    command: currentStep.command,
-    work_dir: currentStep.work_dir,
-    timeout: currentStep.timeout,
-    project_id: currentStep.project_id,
-    action_type: currentStep.action_type,
-    script_path: currentStep.script_path,
-    http_config: currentStep.http_config,
-    file_config: currentStep.file_config,
-    interpreter: currentStep.interpreter,
-    enabled: currentStep.enabled,
-    delay_seconds: currentStep.delay_seconds
-  });
-  
-  await loadWorkflows();
-}
-
-async function moveStepDown(stepId) {
-  const workflow = workflowState.workflows.find((item) => item.id === workflowState.selectedWorkflowId);
-  if (!workflow) return;
-  
-  const stepIndex = workflow.steps.findIndex((item) => item.id === stepId);
-  if (stepIndex >= workflow.steps.length - 1) return;
-  
-  const currentStep = workflow.steps[stepIndex];
-  const nextStep = workflow.steps[stepIndex + 1];
-  
-  // 使用临时序号避免冲突
-  const tempOrder = -1;
-  
-  // 先将当前步骤序号改为临时值
-  await window.projectManager.workflows.updateStep(currentStep.id, {
-    step_order: tempOrder,
-    name: currentStep.name,
-    command: currentStep.command,
-    work_dir: currentStep.work_dir,
-    timeout: currentStep.timeout,
-    project_id: currentStep.project_id,
-    action_type: currentStep.action_type,
-    script_path: currentStep.script_path,
-    http_config: currentStep.http_config,
-    file_config: currentStep.file_config,
-    interpreter: currentStep.interpreter,
-    enabled: currentStep.enabled,
-    delay_seconds: currentStep.delay_seconds
-  });
-  
-  // 将下方步骤序号改为当前步骤原序号
-  await window.projectManager.workflows.updateStep(nextStep.id, {
-    step_order: currentStep.step_order,
-    name: nextStep.name,
-    command: nextStep.command,
-    work_dir: nextStep.work_dir,
-    timeout: nextStep.timeout,
-    project_id: nextStep.project_id,
-    action_type: nextStep.action_type,
-    script_path: nextStep.script_path,
-    http_config: nextStep.http_config,
-    file_config: nextStep.file_config,
-    interpreter: nextStep.interpreter,
-    enabled: nextStep.enabled,
-    delay_seconds: nextStep.delay_seconds
-  });
-  
-  // 将当前步骤序号改为下方步骤原序号
-  await window.projectManager.workflows.updateStep(currentStep.id, {
-    step_order: nextStep.step_order,
-    name: currentStep.name,
-    command: currentStep.command,
-    work_dir: currentStep.work_dir,
-    timeout: currentStep.timeout,
-    project_id: currentStep.project_id,
-    action_type: currentStep.action_type,
-    script_path: currentStep.script_path,
-    http_config: currentStep.http_config,
-    file_config: currentStep.file_config,
-    interpreter: currentStep.interpreter,
-    enabled: currentStep.enabled,
-    delay_seconds: currentStep.delay_seconds
-  });
-  
-  await loadWorkflows();
-}
 
 async function runSingleStep(stepId) {
   // 添加加载动画

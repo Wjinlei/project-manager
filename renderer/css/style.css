@@ -425,7 +425,7 @@ body {
 .wf-table .wf-col-workdir { width: 140px; }
 .wf-table .wf-col-project { width: 90px; }
 .wf-table .wf-col-status { width: 80px; }
-.wf-table .wf-col-actions { width: 240px; }
+.wf-table .wf-col-actions { width: 180px; }
 
 .wf-table td,
 .wf-table th {
@@ -452,6 +452,30 @@ body {
 /* 流程详情表格容器横向滚动 */
 .workflow-editor {
   overflow-x: auto;
+}
+
+/* 拖拽排序 */
+.drag-handle {
+  cursor: grab;
+  opacity: 0.5;
+  user-select: none;
+}
+
+tr[data-step-id] {
+  cursor: grab;
+}
+
+tr[data-step-id]:active {
+  cursor: grabbing;
+}
+
+.drag-handle:hover {
+  opacity: 1;
+}
+
+tr.dragging {
+  opacity: 0.4;
+  background: var(--bt-primary) !important;
 }
 
 .terminal-toolbar {

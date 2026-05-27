@@ -65,6 +65,7 @@ contextBridge.exposeInMainWorld('projectManager', {
     createStep: (workflowId, payload) => ipcRenderer.invoke('workflow-steps:create', workflowId, payload),
     updateStep: (stepId, payload) => ipcRenderer.invoke('workflow-steps:update', stepId, payload),
     deleteStep: (stepId) => ipcRenderer.invoke('workflow-steps:delete', stepId),
+    reorderSteps: (workflowId, stepIds) => ipcRenderer.invoke('workflow-steps:reorder', workflowId, stepIds),
     execute: (workflowId, options) => ipcRenderer.invoke('workflows:execute', workflowId, options),
     executeStep: (stepId) => ipcRenderer.invoke('workflows:execute-step', stepId),
     stop: (workflowId) => ipcRenderer.invoke('workflows:stop', workflowId),
