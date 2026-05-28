@@ -143,6 +143,10 @@ project-manager/
 - 未来计划支持 **Linux** 平台
 - 欢迎提交功能 PR 和 Issue，共同完善本项目
 
+## 友情链接
+
+- [LINUX DO](https://linux.do/) 欢迎各位佬友共同完善这个小工具
+
 ## License
 
 MIT
